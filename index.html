@@ -4,11 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AI Shopping Deal Finder - Asistente Inteligente</title>
-    <!-- Favicon / Icono de la pestaña (Puedes cambiar la URL por la imagen o logo que prefieras) -->
     <link rel="icon" type="image/png" href="https://img.icons8.com/color/48/shopping-cart--v1.png">
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Bloquear zoom automático en todos los inputs en dispositivos móviles asegurando 16px */
+        input, select, textarea {
+            font-size: 16px !important;
+        }
+        @media (min-width: 640px) {
+            input, select, textarea {
+                font-size: 14px !important;
+            }
+        }
+    </style>
 </head>
 <body class="bg-black text-slate-100 min-h-screen flex flex-col items-center justify-between p-4 sm:p-8">
 
@@ -38,7 +48,7 @@
 
         <!-- Search Box -->
         <div class="bg-red-950/20 border border-red-600/40 backdrop-blur-md rounded-2xl p-4 sm:p-6 shadow-2xl shadow-red-950/50 mb-8 relative">
-            <form id="search-form" class="flex flex-col sm:flex-row gap-3" autocomplete="off" action="#">
+            <form id="search-form" class="flex flex-col sm:flex-row gap-3" action="#">
                 <div class="relative flex-grow">
                     <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-red-400 z-10">
                         <i class="fa-solid fa-magnifying-glass"></i>
@@ -47,9 +57,8 @@
                         type="text" 
                         id="query-input" 
                         required
-                        autocomplete="off"
                         placeholder="Ej. Audífonos inalámbricos de menos de $45..." 
-                        class="w-full bg-black/60 border border-red-900/60 rounded-xl pl-11 pr-4 py-3.5 text-white placeholder-zinc-500 focus:outline-none focus:border-red-500 text-base sm:text-base"
+                        class="w-full bg-black/60 border border-red-900/60 rounded-xl pl-11 pr-4 py-3.5 text-white placeholder-zinc-500 focus:outline-none focus:border-red-500"
                     >
                     <div id="search-dropdown" class="absolute left-0 right-0 mt-2 bg-zinc-950 border border-red-900/60 rounded-xl shadow-2xl hidden z-50 overflow-hidden">
                         <div class="p-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider border-b border-zinc-900 flex justify-between items-center">
@@ -61,7 +70,7 @@
                 </div>
                 
                 <div class="sm:w-48">
-                    <select id="store-select" class="w-full bg-black/60 border border-red-900/60 rounded-xl px-4 py-3.5 text-zinc-300 text-base sm:text-sm focus:outline-none focus:border-red-500 cursor-pointer">
+                    <select id="store-select" class="w-full bg-black/60 border border-red-900/60 rounded-xl px-4 py-3.5 text-zinc-300 focus:outline-none focus:border-red-500 cursor-pointer">
                         <option value="Todas">Todas las tiendas</option>
                         <option value="Amazon">Amazon</option>
                         <option value="eBay">eBay</option>
@@ -161,25 +170,30 @@
         </div>
     </main>
 
-    <!-- Modal de Login / Registro limpio sin autocompletar datos personales -->
+    <!-- Modal de Login / Registro con Sugestor y Criterios de Contraseña -->
     <div id="auth-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4 z-50">
         <div class="bg-zinc-950 border border-red-900/60 rounded-2xl p-6 max-w-sm w-full shadow-2xl relative">
             <button type="button" id="close-auth-modal" class="absolute top-4 right-4 text-zinc-500 hover:text-white cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
             <h3 class="font-bold text-white text-lg mb-1" id="auth-title">Iniciar Sesión</h3>
             <p class="text-xs text-zinc-400 mb-4">Ingresa con tu cuenta verificada.</p>
             
-            <form id="auth-form" class="space-y-3" autocomplete="off">
+            <form id="auth-form" class="space-y-3">
                 <div id="name-field" class="hidden">
                     <label class="block text-xs font-medium text-zinc-400 mb-1">Nombre</label>
-                    <input type="text" id="auth-name" name="user_fullname_xyz" autocomplete="off" class="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-3 text-base sm:text-xs text-white" placeholder="Tu nombre">
+                    <input type="text" id="auth-name" autocomplete="name" class="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-3 text-white" placeholder="Tu nombre">
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-zinc-400 mb-1">Correo Electrónico</label>
-                    <input type="email" id="auth-email" name="user_email_xyz" autocomplete="off" required class="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-3 text-base sm:text-xs text-white" placeholder="tucorreo@ejemplo.com">
+                    <input type="email" id="auth-email" autocomplete="email" required class="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-3 text-white" placeholder="tucorreo@ejemplo.com">
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-zinc-400 mb-1">Contraseña</label>
-                    <input type="password" id="auth-password" name="user_password_xyz" autocomplete="new-password" required class="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-3 text-base sm:text-xs text-white" placeholder="••••••">
+                    <input type="password" id="auth-password" autocomplete="new-password" required class="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-3 text-white" placeholder="••••••">
+                    <div id="password-criteria" class="hidden mt-2 text-[11px] text-zinc-400 space-y-1 bg-zinc-900/80 p-2.5 rounded-xl border border-zinc-800">
+                        <p class="font-semibold text-zinc-300 mb-1">Requisitos de seguridad:</p>
+                        <p id="crit-length" class="text-rose-400"><i class="fa-solid fa-circle-xmark mr-1"></i> Mínimo 6 caracteres</p>
+                        <p id="crit-number" class="text-rose-400"><i class="fa-solid fa-circle-xmark mr-1"></i> Al menos un número</p>
+                    </div>
                 </div>
                 <button type="submit" id="auth-submit-btn" class="w-full bg-red-600 hover:bg-red-500 text-white font-medium py-3 rounded-xl text-xs cursor-pointer shadow-lg shadow-red-600/30">Entrar</button>
             </form>
@@ -197,24 +211,24 @@
             <h3 class="font-bold text-white text-lg mb-1">Alerta de Bajada de Precio</h3>
             <p class="text-xs text-zinc-400 mb-4">Te enviaremos un correo real en tiempo real.</p>
 
-            <form id="alert-form" class="space-y-4" autocomplete="off">
+            <form id="alert-form" class="space-y-4">
                 <div>
                     <label class="block text-xs font-medium text-zinc-400 mb-1">Producto</label>
-                    <input type="text" id="alert-product-title" readonly class="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-base sm:text-xs text-zinc-300">
+                    <input type="text" id="alert-product-title" readonly class="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-zinc-300">
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-medium text-zinc-400 mb-1">Precio Actual</label>
-                        <input type="text" id="alert-current-price" readonly class="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-base sm:text-xs text-emerald-400 font-bold">
+                        <input type="text" id="alert-current-price" readonly class="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-emerald-400 font-bold">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-zinc-400 mb-1">Precio Objetivo ($)</label>
-                        <input type="number" step="0.01" id="alert-target-price" required class="w-full bg-black border border-red-900/60 rounded-xl px-3.5 py-3 text-base sm:text-xs text-white" placeholder="Ej. 35.00">
+                        <input type="number" step="0.01" id="alert-target-price" required class="w-full bg-black border border-red-900/60 rounded-xl px-3.5 py-3 text-white" placeholder="Ej. 35.00">
                     </div>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-zinc-400 mb-1">Correo Notificación</label>
-                    <input type="email" id="alert-email" name="alert_email_xyz" autocomplete="off" required class="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-3 text-base sm:text-sm text-white" placeholder="tucorreo@ejemplo.com">
+                    <input type="email" id="alert-email" autocomplete="email" required class="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-3 text-white" placeholder="tucorreo@ejemplo.com">
                 </div>
                 <button type="submit" class="w-full bg-red-600 hover:bg-red-500 text-white font-medium py-3 rounded-xl text-xs cursor-pointer">Activar Alerta</button>
             </form>
@@ -249,6 +263,9 @@
         const authName = document.getElementById('auth-name');
         const authEmail = document.getElementById('auth-email');
         const authPassword = document.getElementById('auth-password');
+        const passwordCriteria = document.getElementById('password-criteria');
+        const critLength = document.getElementById('crit-length');
+        const critNumber = document.getElementById('crit-number');
         const authSubmitBtn = document.getElementById('auth-submit-btn');
         const toggleAuthMode = document.getElementById('toggle-auth-mode');
         const authMsg = document.getElementById('auth-msg');
@@ -288,14 +305,40 @@
         document.getElementById('open-auth-btn')?.addEventListener('click', openAuthModal);
         closeAuthModal.addEventListener('click', () => authModal.classList.add('hidden') || authModal.classList.remove('flex'));
 
+        // Validación en tiempo real de criterios de contraseña
+        authPassword.addEventListener('input', () => {
+            if (!isRegisterMode) return;
+            const val = authPassword.value;
+            
+            // Criterio 1: Longitud >= 6
+            if (val.length >= 6) {
+                critLength.className = "text-emerald-400";
+                critLength.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i> Mínimo 6 caracteres';
+            } else {
+                critLength.className = "text-rose-400";
+                critLength.innerHTML = '<i class="fa-solid fa-circle-xmark mr-1"></i> Mínimo 6 caracteres';
+            }
+
+            // Criterio 2: Contiene al menos un número
+            if (/\d/.test(val)) {
+                critNumber.className = "text-emerald-400";
+                critNumber.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i> Al menos un número';
+            } else {
+                critNumber.className = "text-rose-400";
+                critNumber.innerHTML = '<i class="fa-solid fa-circle-xmark mr-1"></i> Al menos un número';
+            }
+        });
+
         toggleAuthMode.addEventListener('click', () => {
             isRegisterMode = !isRegisterMode;
             authMsg.classList.add('hidden');
+            authPassword.value = "";
             if (isRegisterMode) {
                 authTitle.textContent = "Crear Cuenta Nueva";
                 nameField.classList.remove('hidden');
                 authName.setAttribute('required', 'true');
-                authPassword.setAttribute('autocomplete', 'new-password');
+                authPassword.setAttribute('autocomplete', 'new-password'); // Activa el sugestor de contraseñas de Google/Apple
+                passwordCriteria.classList.remove('hidden');
                 authSubmitBtn.textContent = "Registrarse y Enviar Verificación";
                 toggleAuthMode.textContent = "¿Ya tienes cuenta? Inicia sesión";
             } else {
@@ -303,6 +346,7 @@
                 nameField.classList.add('hidden');
                 authName.removeAttribute('required');
                 authPassword.setAttribute('autocomplete', 'current-password');
+                passwordCriteria.classList.add('hidden');
                 authSubmitBtn.textContent = "Entrar";
                 toggleAuthMode.textContent = "¿No tienes cuenta? Regístrate aquí";
             }
@@ -311,6 +355,18 @@
 
         authForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            // Validar criterios si está en modo registro
+            if (isRegisterMode) {
+                const pwd = authPassword.value;
+                if (pwd.length < 6 || !/\d/.test(pwd)) {
+                    authMsg.className = "mt-3 p-3 rounded-xl text-xs text-center bg-rose-500/20 text-rose-400 border border-rose-500/30";
+                    authMsg.textContent = "La contraseña debe cumplir con los requisitos de seguridad.";
+                    authMsg.classList.remove('hidden');
+                    return;
+                }
+            }
+
             const endpoint = isRegisterMode ? '/api/register' : '/api/login';
             const payload = { email: authEmail.value, password: authPassword.value, name: authName.value || "Usuario" };
 
@@ -574,7 +630,7 @@
             } catch (err) {
                 alertMsg.className = "mt-3 p-3 rounded-xl text-xs font-medium text-center bg-rose-500/20 text-rose-400";
                 alertMsg.textContent = "Error al activar alerta.";
-                alertMsg.classList.remove('hidden');
+                alertMsg.classList.add('hidden');
             }
         });
     </script>

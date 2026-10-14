@@ -278,7 +278,7 @@
         function openAuthModal() {
             authModal.classList.remove('hidden');
             authModal.classList.add('flex');
-            setTimeout(() => authEmail.focus(), 100); // Forzar foco para activar autocompletado del navegador
+            setTimeout(() => authEmail.focus(), 100);
         }
 
         updateSessionUI();
@@ -292,14 +292,14 @@
                 authTitle.textContent = "Crear Cuenta Nueva";
                 nameField.classList.remove('hidden');
                 authName.setAttribute('required', 'true');
-                authPassword.setAttribute('autocomplete', 'new-password'); // Vital para registro
+                authPassword.setAttribute('autocomplete', 'new-password');
                 authSubmitBtn.textContent = "Registrarse y Enviar Verificación";
                 toggleAuthMode.textContent = "¿Ya tienes cuenta? Inicia sesión";
             } else {
                 authTitle.textContent = "Iniciar Sesión";
                 nameField.classList.add('hidden');
                 authName.removeAttribute('required');
-                authPassword.setAttribute('autocomplete', 'current-password'); // Vital para login
+                authPassword.setAttribute('autocomplete', 'current-password');
                 authSubmitBtn.textContent = "Entrar";
                 toggleAuthMode.textContent = "¿No tienes cuenta? Regístrate aquí";
             }
@@ -312,7 +312,7 @@
             const payload = { email: authEmail.value, password: authPassword.value, name: authName.value || "Usuario" };
 
             try {
-                const res = await fetch(`http://127.0.0.1:8000${endpoint}`, {
+                const res = await fetch(`${endpoint}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -398,7 +398,7 @@
             results.classList.add('hidden');
 
             try {
-                const res = await fetch(`http://127.0.0.1:8000/api/search-deals?query=${encodeURIComponent(query)}&store_filter=${encodeURIComponent(store)}`, { method: 'POST' });
+                const res = await fetch(`/api/search-deals?query=${encodeURIComponent(query)}&store_filter=${encodeURIComponent(store)}`, { method: 'POST' });
                 if (!res.ok) throw new Error('Error al conectar con servidor.');
                 const data = await res.json();
                 currentData = data;
@@ -552,7 +552,7 @@
             const targetPrice = parseFloat(document.getElementById('alert-target-price').value);
 
             try {
-                const res = await fetch('http://127.0.0.1:8000/api/set-alert', {
+                const res = await fetch('/api/set-alert', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

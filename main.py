@@ -42,7 +42,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GEMINI_API_KEY = "AQ.Ab8RN6LqHWy0kgcRR6KRAO-UDAFLveaynF7wYc5pTcKHj1dpbQ"
+# Clave API segura mediante variable de entorno para evitar bloqueos en GitHub
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 # Credenciales SMTP
@@ -121,7 +122,7 @@ def send_verification_email(recipient_email: str, name: str, token: str, base_ur
                 <div class="header">
                     <h1 class="logo-text">Shopping Agent <span>IA</span></h1>
                 </div>
-                .content {{
+                <div class="content">
                     <div class="greeting">¡Hola, {name}!</div>
                     <p class="text">Has registrado una nueva cuenta en nuestra plataforma global de compras. Haz clic en el botón de abajo para verificar tu correo electrónico y activar tu acceso:</p>
                     <div style="text-align: center;">
@@ -135,8 +136,6 @@ def send_verification_email(recipient_email: str, name: str, token: str, base_ur
         </body>
         </html>
         """
-        # Limpieza de sintaxis en HTML
-        html_content = html_content.replace('.content {{\n                    <div', '<div')
 
         msg.attach(MIMEText(html_content, 'html', 'utf-8'))
 

@@ -170,7 +170,7 @@
         </div>
     </main>
 
-    <!-- Modal de Login / Registro con Sugestor y Criterios de Contraseña -->
+    <!-- Modal de Login / Registro -->
     <div id="auth-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4 z-50">
         <div class="bg-zinc-950 border border-red-900/60 rounded-2xl p-6 max-w-sm w-full shadow-2xl relative">
             <button type="button" id="close-auth-modal" class="absolute top-4 right-4 text-zinc-500 hover:text-white cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
@@ -189,8 +189,9 @@
                 <div>
                     <label class="block text-xs font-medium text-zinc-400 mb-1">Contraseña</label>
                     <input type="password" id="auth-password" autocomplete="new-password" required class="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-3 text-white" placeholder="••••••">
+                    <!-- Criterios de seguridad visibles -->
                     <div id="password-criteria" class="hidden mt-2 text-[11px] text-zinc-400 space-y-1 bg-zinc-900/80 p-2.5 rounded-xl border border-zinc-800">
-                        <p class="font-semibold text-zinc-300 mb-1">Requisitos de seguridad:</p>
+                        <p class="font-semibold text-zinc-300 mb-1">Requisitos de contraseña:</p>
                         <p id="crit-length" class="text-rose-400"><i class="fa-solid fa-circle-xmark mr-1"></i> Mínimo 6 caracteres</p>
                         <p id="crit-number" class="text-rose-400"><i class="fa-solid fa-circle-xmark mr-1"></i> Al menos un número</p>
                     </div>

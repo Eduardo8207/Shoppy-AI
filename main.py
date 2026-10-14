@@ -42,7 +42,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Clave API segura mediante variable de entorno para evitar bloqueos en GitHub
+# Clave API segura mediante variable de entorno
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
@@ -253,7 +253,7 @@ def analyze_query_with_gemini(raw_query: str) -> dict:
     Responde ÚNICAMENTE con el JSON válido.
     """
     try:
-        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        response = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
         text = response.text.strip()
         if text.startswith("```"):
             text = text.split("```")[1]
@@ -261,7 +261,8 @@ def analyze_query_with_gemini(raw_query: str) -> dict:
                 text = text[4:]
             text = text.strip()
         return json.loads(text)
-    except:
+    except Exception as e:
+        print(f"Error con Gemini: {e}")
         return {"optimized_query": raw_query, "max_price": None, "condition": "Nuevo"}
 
 @app.post("/api/search-deals", response_model=DealResponse)

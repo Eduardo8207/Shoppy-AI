@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Shopping Deal Finder - Autenticación y Verificación</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-black text-slate-100 min-h-screen flex flex-col items-center justify-between p-4 sm:p-8">
+
+    <!-- Top Bar: Usuario & Login -->
+    <header class="w-full max-w-4xl flex justify-between items-center mb-6 border-b border-zinc-900 pb-4">
+        <div class="inline-flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-400 px-3 py-1 rounded-full text-xs font-medium">
+            <i class="fa-solid fa-shield-halved"></i> Sistema Protegido
+        </div>
+        <div id="user-session-area" class="flex items-center gap-3">
+            <button id="open-auth-btn" class="bg-red-950/40 hover:bg-red-900/40 border border-red-600/50 text-red-300 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2">
+                <i class="fa-solid fa-user"></i> Iniciar Sesión / Registro
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="w-full max-w-4xl flex-grow">
+        
+        <div class="text-center mb-8">
+            <h1 class="text-3xl sm:text-5xl font-black tracking-tight text-white mb-2 uppercase">
+                Asistente de Compras <span class="text-red-500">IA</span>
+            </h1>
+            <p class="text-zinc-400 text-sm sm:text-base">
+                Compara precios, analiza tendencias históricas, calcula importaciones y programa alertas.
+            </p>
+        </div>
+
+        <!-- Search Box -->
+        <div class="bg-red-950/20 border border-red-600/40 backdrop-blur-md rounded-2xl p-4 sm:p-6 shadow-2xl shadow-red-950/50 mb-8 relative">
+            <form id="search-form" class="flex flex-col sm:flex-row gap-3" action="#">
+                <div class="relative flex-grow">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-red-400 z-10">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </span>
+                    <input 
+                        type="text" 
+                        id="query-input" 
+                        required
+                        placeholder="Ej. Audífonos inalámbricos de menos de $45..." 
+                        class="w-full bg-black/60 border border-red-900/60 rounded-xl pl-11 pr-4 py-3.5 text-white placeholder-zinc-500 focus:outline-none focus:border-red-500 text-sm sm:text-base"
+                    >
+                    <div id="search-dropdown" class="absolute left-0 right-0 mt-2 bg-zinc-950 border border-red-900/60 rounded-xl shadow-2xl hidden z-50 overflow-hidden">
+                        <div class="p-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider border-b border-zinc-900 flex justify-between items-center">
+                            <span>Historial Reciente</span>
+                            <span id="clear-history" class="text-red-400 cursor-pointer text-[10px]">Limpiar</span>
+                        </div>
+                        <div id="search-options-list"></div>
+                    </div>
+                </div>
+                
+                <div class="sm:w-48">
+                    <select id="store-select" class="w-full bg-black/60 border border-red-900/60 rounded-xl px-4 py-3.5 text-zinc-300 text-sm focus:outline-none focus:border-red-500 cursor-pointer">
+                        <option value="Todas">Todas las tiendas</option>
+                        <option value="Amazon">Amazon</option>
+                        <option value="eBay">eBay</option>
+                        <option value="Walmart">Walmart</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="bg-red-600 hover:bg-red-500 text-white font-semibold px-6 py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-red-600/30 text-sm">
+                    <span>Buscar</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </form>
+        </div>
+
+        <!-- Loading -->
+        <div id="loading" class="hidden text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-red-500 border-t-transparent mb-4"></div>
+            <p class="text-zinc-400 text-sm font-medium">Analizando tiendas globales y calculando aranceles...</p>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results" class="hidden space-y-6">
+            <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-center gap-2 text-sm">
+                <div><span class="text-zinc-500">Búsqueda:</span> <span id="res-original" class="text-zinc-300"></span></div>
+                <div class="flex gap-3">
+                    <button type="button" id="compare-btn" class="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 px-3 py-1 rounded-lg text-xs font-medium cursor-pointer">
+                        <i class="fa-solid fa-columns mr-1"></i> Comparar Tiendas
+                    </button>
+                    <button type="button" id="share-btn" class="bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 px-3 py-1 rounded-lg text-xs font-medium cursor-pointer">
+                        <i class="fa-solid fa-share-nodes mr-1"></i> Compartir Oferta
+                    </button>
+                </div>
+            </div>
+
+            <!-- Metrics -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-emerald-950/20 border border-emerald-500/30 rounded-2xl p-5 text-center">
+                    <div class="text-emerald-400 text-xs font-semibold mb-1">Ahorro Máximo</div>
+                    <div id="res-money" class="text-3xl font-black text-emerald-400">$0.00</div>
+                    <div id="res-percentage" class="text-emerald-500 text-xs mt-1">0% más económico</div>
+                </div>
+                <div class="bg-red-950/20 border border-red-500/30 rounded-2xl p-5 text-center">
+                    <div class="text-red-400 text-xs font-semibold mb-1">Tiempo Ahorrado</div>
+                    <div id="res-time" class="text-3xl font-black text-red-400">15 min</div>
+                    <div class="text-red-500/80 text-xs mt-1">vs búsqueda manual</div>
+                </div>
+                <div class="bg-zinc-950 border border-zinc-800 rounded-2xl p-5 text-center">
+                    <div class="text-zinc-400 text-xs font-semibold mb-1">Precio Promedio Web</div>
+                    <div id="res-avg" class="text-3xl font-black text-white">$0.00</div>
+                    <div class="text-zinc-500 text-xs mt-1">referencia de mercado</div>
+                </div>
+            </div>
+
+            <!-- Best Deal Card -->
+            <div class="bg-gradient-to-br from-red-950/30 via-zinc-950 to-zinc-950 border-2 border-red-600/50 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+                <div class="absolute top-0 right-0 bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-bl-xl uppercase">Mejor Opción</div>
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div class="space-y-2 pr-12">
+                        <div class="flex items-center gap-2">
+                            <span id="best-store" class="bg-red-500/20 text-red-300 px-3 py-0.5 rounded-full text-xs font-bold uppercase">Tienda</span>
+                            <span class="text-zinc-400 text-xs">Importación estimada: <strong id="best-import" class="text-zinc-200">$0.00</strong></span>
+                        </div>
+                        <h3 id="best-title" class="text-lg sm:text-xl font-bold text-white">Título</h3>
+                        <div class="text-zinc-400 text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-truck-fast text-red-400"></i> Envío: <span id="best-shipping" class="text-zinc-200">0 días</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-start md:items-end w-full md:w-auto gap-3 border-t md:border-t-0 pt-4 md:pt-0 border-zinc-800">
+                        <div id="best-price" class="text-3xl font-black text-emerald-400">$0.00</div>
+                        <div class="flex flex-wrap gap-2">
+                            <button id="alert-btn" type="button" class="bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 font-medium px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer">
+                                <i class="fa-solid fa-bell"></i> Crear Alerta
+                            </button>
+                            <a id="best-url" href="#" target="_blank" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-5 py-2 rounded-xl text-xs flex items-center gap-2">
+                                <span>Ver Oferta</span> <i class="fa-solid fa-external-link-alt text-[10px]"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gráfico de Tendencia de Precios -->
+            <div class="bg-zinc-950 border border-zinc-800 rounded-2xl p-6">
+                <h4 class="text-sm font-semibold text-zinc-300 mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-chart-line text-red-500"></i> Tendencia Histórica de Precios (Últimos 6 Meses)
+                </h4>
+                <div class="w-full h-64">
+                    <canvas id="priceChart"></canvas>
+                </div>
+            </div>
+
+            <!-- All Options List -->
+            <div class="space-y-3 pt-2">
+                <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Opciones encontradas</h4>
+                <div id="all-options-container" class="space-y-2"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal de Login / Registro con soporte de Autocompletado optimizado -->
+    <div id="auth-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4 z-50">
+        <div class="bg-zinc-950 border border-red-900/60 rounded-2xl p-6 max-w-sm w-full shadow-2xl relative">
+            <button type="button" id="close-auth-modal" class="absolute top-4 right-4 text-zinc-500 hover:text-white cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+            <h3 class="font-bold text-white text-lg mb-1" id="auth-title">Iniciar Sesión</h3>
+            <p class="text-xs text-zinc-400 mb-4">Ingresa con tu cuenta verificada.</p>
+            
+            <form id="auth-form" class="space-y-3" autocomplete="on">
+                <div id="name-field" class="hidden">
+                    <label class="block text-xs font-medium text-zinc-400 mb-1">Nombre</label>
+                    <input type="text" id="auth-name" name="name" autocomplete="name" class="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white" placeholder="Tu nombre">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-zinc-400 mb-1">Correo Electrónico</label>
+                    <input type="email" id="auth-email" name="email" autocomplete="email" required class="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white" placeholder="velaeduardo365@gmail.com">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-zinc-400 mb-1">Contraseña</label>
+                    <input type="password" id="auth-password" name="password" autocomplete="current-password" required class="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white" placeholder="••••••">
+                </div>
+                <button type="submit" id="auth-submit-btn" class="w-full bg-red-600 hover:bg-red-500 text-white font-medium py-2.5 rounded-xl text-xs cursor-pointer shadow-lg shadow-red-600/30">Entrar</button>
+            </form>
+            <div class="text-center mt-3">
+                <button type="button" id="toggle-auth-mode" class="text-xs text-red-400 hover:underline cursor-pointer">¿No tienes cuenta? Regístrate aquí</button>
+            </div>
+            <div id="auth-msg" class="hidden mt-3 p-2 rounded-xl text-xs text-center"></div>
+        </div>
+    </div>
+
+    <!-- Modal de Alerta -->
+    <div id="alert-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4 z-50">
+        <div class="bg-zinc-950 border border-red-900/60 rounded-2xl p-6 max-w-md w-full shadow-2xl relative">
+            <button type="button" id="close-modal-btn" class="absolute top-4 right-4 text-zinc-500 hover:text-white cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+            <h3 class="font-bold text-white text-lg mb-1">Alerta de Bajada de Precio</h3>
+            <p class="text-xs text-zinc-400 mb-4">Te enviaremos un correo real en tiempo real.</p>
+
+            <form id="alert-form" class="space-y-4" autocomplete="on">
+                <div>
+                    <label class="block text-xs font-medium text-zinc-400 mb-1">Producto</label>
+                    <input type="text" id="alert-product-title" readonly class="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-300">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-zinc-400 mb-1">Precio Actual</label>
+                        <input type="text" id="alert-current-price" readonly class="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs text-emerald-400 font-bold">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-zinc-400 mb-1">Precio Objetivo ($)</label>
+                        <input type="number" step="0.01" id="alert-target-price" required class="w-full bg-black border border-red-900/60 rounded-xl px-3 py-2 text-xs text-white" placeholder="Ej. 35.00">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-zinc-400 mb-1">Correo Notificación</label>
+                    <input type="email" id="alert-email" name="email" autocomplete="email" required class="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white" placeholder="velaeduardo365@gmail.com">
+                </div>
+                <button type="submit" class="w-full bg-red-600 hover:bg-red-500 text-white font-medium py-3 rounded-xl text-xs cursor-pointer">Activar Alerta</button>
+            </form>
+            <div id="alert-msg" class="hidden mt-3 p-3 rounded-xl text-xs text-center"></div>
+        </div>
+    </div>
+
+    <!-- Modal de Comparación Lado a Lado -->
+    <div id="compare-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4 z-50">
+        <div class="bg-zinc-950 border border-red-900/60 rounded-2xl p-6 max-w-2xl w-full shadow-2xl relative">
+            <button type="button" id="close-compare-modal" class="absolute top-4 right-4 text-zinc-500 hover:text-white cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
+            <h3 class="font-bold text-white text-lg mb-4 flex items-center gap-2"><i class="fa-solid fa-columns text-red-500"></i> Comparativa Directa de Tiendas</h3>
+            <div id="compare-table-container" class="overflow-x-auto"></div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="w-full max-w-4xl text-center mt-12 text-xs text-zinc-600 py-4">
+        AI Shopping Agent &copy; 2026 &bull; Todos los derechos reservados
+    </footer>
+
+    <!-- Script Principal -->
+    <script>
+        let currentUser = JSON.parse(localStorage.getItem('current_user')) || null;
+        const userSessionArea = document.getElementById('user-session-area');
+        const authModal = document.getElementById('auth-modal');
+        const openAuthBtn = document.getElementById('open-auth-btn');
+        const closeAuthModal = document.getElementById('close-auth-modal');
+        const authForm = document.getElementById('auth-form');
+        const authTitle = document.getElementById('auth-title');
+        const nameField = document.getElementById('name-field');
+        const authName = document.getElementById('auth-name');
+        const authEmail = document.getElementById('auth-email');
+        const authPassword = document.getElementById('auth-password');
+        const authSubmitBtn = document.getElementById('auth-submit-btn');
+        const toggleAuthMode = document.getElementById('toggle-auth-mode');
+        const authMsg = document.getElementById('auth-msg');
+        let isRegisterMode = false;
+
+        function updateSessionUI() {
+            if (currentUser) {
+                userSessionArea.innerHTML = `
+                    <div class="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-xl text-xs">
+                        <i class="fa-solid fa-user-check text-emerald-400"></i>
+                        <span class="text-white font-semibold">${currentUser.name}</span>
+                        <button id="logout-btn" class="ml-2 text-zinc-500 hover:text-red-400 cursor-pointer"><i class="fa-solid fa-right-from-bracket"></i></button>
+                    </div>
+                `;
+                document.getElementById('logout-btn').addEventListener('click', () => {
+                    localStorage.removeItem('current_user');
+                    currentUser = null;
+                    updateSessionUI();
+                });
+            } else {
+                userSessionArea.innerHTML = `
+                    <button id="open-auth-btn" class="bg-red-950/40 hover:bg-red-900/40 border border-red-600/50 text-red-300 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2">
+                        <i class="fa-solid fa-user"></i> Iniciar Sesión / Registro
+                    </button>
+                `;
+                document.getElementById('open-auth-btn').addEventListener('click', openAuthModal);
+            }
+        }
+
+        function openAuthModal() {
+            authModal.classList.remove('hidden');
+            authModal.classList.add('flex');
+            setTimeout(() => authEmail.focus(), 100); // Forzar foco para activar autocompletado del navegador
+        }
+
+        updateSessionUI();
+        document.getElementById('open-auth-btn')?.addEventListener('click', openAuthModal);
+        closeAuthModal.addEventListener('click', () => authModal.classList.add('hidden') || authModal.classList.remove('flex'));
+
+        toggleAuthMode.addEventListener('click', () => {
+            isRegisterMode = !isRegisterMode;
+            authMsg.classList.add('hidden');
+            if (isRegisterMode) {
+                authTitle.textContent = "Crear Cuenta Nueva";
+                nameField.classList.remove('hidden');
+                authName.setAttribute('required', 'true');
+                authPassword.setAttribute('autocomplete', 'new-password'); // Vital para registro
+                authSubmitBtn.textContent = "Registrarse y Enviar Verificación";
+                toggleAuthMode.textContent = "¿Ya tienes cuenta? Inicia sesión";
+            } else {
+                authTitle.textContent = "Iniciar Sesión";
+                nameField.classList.add('hidden');
+                authName.removeAttribute('required');
+                authPassword.setAttribute('autocomplete', 'current-password'); // Vital para login
+                authSubmitBtn.textContent = "Entrar";
+                toggleAuthMode.textContent = "¿No tienes cuenta? Regístrate aquí";
+            }
+            setTimeout(() => authEmail.focus(), 100);
+        });
+
+        authForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const endpoint = isRegisterMode ? '/api/register' : '/api/login';
+            const payload = { email: authEmail.value, password: authPassword.value, name: authName.value || "Usuario" };
+
+            try {
+                const res = await fetch(`http://127.0.0.1:8000${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (res.ok && data.status === 'success') {
+                    if (!isRegisterMode) {
+                        currentUser = { email: authEmail.value, name: data.name || "Usuario" };
+                        localStorage.setItem('current_user', JSON.stringify(currentUser));
+                        updateSessionUI();
+                    }
+                    authMsg.className = "mt-3 p-3 rounded-xl text-xs text-center bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+                    authMsg.textContent = data.message;
+                    authMsg.classList.remove('hidden');
+                    
+                    if (!isRegisterMode) {
+                        setTimeout(() => {
+                            authModal.classList.add('hidden');
+                            authModal.classList.remove('flex');
+                            authMsg.classList.add('hidden');
+                        }, 2000);
+                    }
+                } else {
+                    throw new Error(data.detail || data.message);
+                }
+            } catch (err) {
+                authMsg.className = "mt-3 p-3 rounded-xl text-xs text-center bg-rose-500/20 text-rose-400 border border-rose-500/30";
+                authMsg.textContent = err.message || "Error de autenticación.";
+                authMsg.classList.remove('hidden');
+            }
+        });
+
+        // Búsqueda y Resultados
+        const form = document.getElementById('search-form');
+        const queryInput = document.getElementById('query-input');
+        const storeSelect = document.getElementById('store-select');
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+        const searchDropdown = document.getElementById('search-dropdown');
+        const searchOptionsList = document.getElementById('search-options-list');
+        const clearHistoryBtn = document.getElementById('clear-history');
+
+        let currentData = null;
+        let priceChartInstance = null;
+
+        function getHistory() {
+            return JSON.parse(localStorage.getItem('search_history')) || ["Audífonos inalámbricos", "Laptop gamer"];
+        }
+
+        function saveHistory(q) {
+            let h = getHistory().filter(item => item.toLowerCase() !== q.toLowerCase());
+            h.unshift(q);
+            localStorage.setItem('search_history', JSON.stringify(h.slice(0, 5)));
+        }
+
+        clearHistoryBtn.addEventListener('click', () => { localStorage.removeItem('search_history'); searchDropdown.classList.add('hidden'); });
+
+        queryInput.addEventListener('focus', () => {
+            const h = getHistory();
+            if (h.length === 0) return;
+            searchOptionsList.innerHTML = "";
+            h.forEach(item => {
+                const div = document.createElement('div');
+                div.className = "px-4 py-2 text-xs text-zinc-300 hover:bg-red-950/40 cursor-pointer border-b border-zinc-900 last:border-none flex items-center justify-between";
+                div.innerHTML = `<span><i class="fa-solid fa-clock-rotate-left text-red-500 mr-2"></i>${item}</span>`;
+                div.addEventListener('mousedown', (e) => { e.preventDefault(); queryInput.value = item; searchDropdown.classList.add('hidden'); });
+                searchOptionsList.appendChild(div);
+            });
+            searchDropdown.classList.remove('hidden');
+        });
+
+        queryInput.addEventListener('blur', () => setTimeout(() => searchDropdown.classList.add('hidden'), 250));
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = queryInput.value.trim();
+            const store = storeSelect.value;
+            if (!query) return;
+
+            saveHistory(query);
+            searchDropdown.classList.add('hidden');
+            loading.classList.remove('hidden');
+            results.classList.add('hidden');
+
+            try {
+                const res = await fetch(`http://127.0.0.1:8000/api/search-deals?query=${encodeURIComponent(query)}&store_filter=${encodeURIComponent(store)}`, { method: 'POST' });
+                if (!res.ok) throw new Error('Error al conectar con servidor.');
+                const data = await res.json();
+                currentData = data;
+
+                document.getElementById('res-original').textContent = data.user_original_query;
+                document.getElementById('res-money').textContent = `$${data.money_saved.toFixed(2)}`;
+                document.getElementById('res-percentage').textContent = `${data.percentage_saved}% más económico`;
+                document.getElementById('res-time').textContent = `${data.time_saved_minutes} min`;
+                document.getElementById('res-avg').textContent = `$${data.average_market_price.toFixed(2)}`;
+
+                const best = data.best_deal;
+                document.getElementById('best-store').textContent = best.store;
+                document.getElementById('best-title').textContent = best.title;
+                document.getElementById('best-shipping').textContent = `${best.shipping_days} días hábiles`;
+                document.getElementById('best-price').textContent = `$${best.price.toFixed(2)}`;
+                document.getElementById('best-import').textContent = `$${best.import_fee.toFixed(2)}`;
+                document.getElementById('best-url').href = best.url;
+
+                renderPriceChart(best.price_history, best.store);
+
+                const container = document.getElementById('all-options-container');
+                container.innerHTML = '';
+                data.all_options.forEach(opt => {
+                    const item = document.createElement('div');
+                    item.className = "bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex items-center justify-between gap-4 hover:border-zinc-700 transition-all";
+                    item.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <span class="bg-zinc-900 text-zinc-300 px-2.5 py-1 rounded-lg text-xs font-semibold">${opt.store}</span>
+                            <div>
+                                <h5 class="text-sm font-medium text-white">${opt.title}</h5>
+                                <span class="text-xs text-zinc-500">Envío: ${opt.shipping_days} días &bull; Importación: $${opt.import_fee.toFixed(2)}</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span class="text-lg font-bold text-zinc-200">$${opt.price.toFixed(2)}</span>
+                            <a href="${opt.url}" target="_blank" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 px-3 py-1.5 rounded-lg text-xs font-medium">Ver <i class="fa-solid fa-arrow-up-right-from-square ml-1 text-[10px]"></i></a>
+                        </div>
+                    `;
+                    container.appendChild(item);
+                });
+
+                loading.classList.add('hidden');
+                results.classList.remove('hidden');
+            } catch (err) {
+                alert('No se pudo conectar con FastAPI.');
+                loading.classList.add('hidden');
+            }
+        });
+
+        function renderPriceChart(historyData, storeName) {
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            if (priceChartInstance) priceChartInstance.destroy();
+
+            priceChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['Mes -5', 'Mes -4', 'Mes -3', 'Mes -2', 'Mes -1', 'Actual'],
+                    datasets: [{
+                        label: `Precio histórico en ${storeName} ($)`,
+                        data: historyData,
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#a1a1aa', font: { size: 11 } } } },
+                    scales: {
+                        x: { ticks: { color: '#71717a' }, grid: { color: '#27272a' } },
+                        y: { ticks: { color: '#71717a' }, grid: { color: '#27272a' } }
+                    }
+                }
+            });
+        }
+
+        document.getElementById('share-btn').addEventListener('click', () => {
+            if (!currentData) return;
+            const text = `¡Mira esta oferta encontrada por mi Asistente IA!\nProducto: ${currentData.best_deal.title}\nPrecio: $${currentData.best_deal.price.toFixed(2)} en ${currentData.best_deal.store}`;
+            navigator.clipboard.writeText(text);
+            alert("¡Resumen de la oferta copiado al portapapeles!");
+        });
+
+        const compareModal = document.getElementById('compare-modal');
+        document.getElementById('compare-btn').addEventListener('click', () => {
+            if (!currentData) return;
+            const tableContainer = document.getElementById('compare-table-container');
+            let html = `
+                <table class="w-full text-left text-xs text-zinc-300 border-collapse">
+                    <thead>
+                        <tr class="border-b border-zinc-800 text-zinc-400">
+                            <th class="p-3">Tienda</th>
+                            <th class="p-3">Precio</th>
+                            <th class="p-3">Envío</th>
+                            <th class="p-3">Importación</th>
+                            <th class="p-3">Total Estimado</th>
+                            <th class="p-3">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            currentData.all_options.forEach(opt => {
+                const total = opt.price + opt.import_fee;
+                html += `
+                    <tr class="border-b border-zinc-900 hover:bg-zinc-900/50">
+                        <td class="p-3 font-bold text-white">${opt.store}</td>
+                        <td class="p-3 text-emerald-400 font-bold">$${opt.price.toFixed(2)}</td>
+                        <td class="p-3">${opt.shipping_days} días</td>
+                        <td class="p-3">$${opt.import_fee.toFixed(2)}</td>
+                        <td class="p-3 font-black text-white">$${total.toFixed(2)}</td>
+                        <td class="p-3"><a href="${opt.url}" target="_blank" class="text-red-400 hover:underline">Ver</a></td>
+                    </tr>
+                `;
+            });
+            html += `</tbody></table>`;
+            tableContainer.innerHTML = html;
+            compareModal.classList.remove('hidden');
+            compareModal.classList.add('flex');
+        });
+        document.getElementById('close-compare-modal').addEventListener('click', () => compareModal.classList.add('hidden') || compareModal.classList.remove('flex'));
+
+        const alertModal = document.getElementById('alert-modal');
+        const alertBtn = document.getElementById('alert-btn');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const alertForm = document.getElementById('alert-form');
+        const alertMsg = document.getElementById('alert-msg');
+        const alertEmailInput = document.getElementById('alert-email');
+
+        alertBtn.addEventListener('click', () => {
+            if (!currentData) return;
+            const best = currentData.best_deal;
+            document.getElementById('alert-product-title').value = best.title;
+            document.getElementById('alert-current-price').value = `$${best.price.toFixed(2)}`;
+            document.getElementById('alert-target-price').value = (best.price * 0.85).toFixed(2);
+            alertMsg.classList.add('hidden');
+            
+            alertEmailInput.value = currentUser ? currentUser.email : "velaeduardo365@gmail.com";
+
+            alertModal.classList.remove('hidden');
+            alertModal.classList.add('flex');
+        });
+
+        closeModalBtn.addEventListener('click', () => alertModal.classList.add('hidden') || alertModal.classList.remove('flex'));
+
+        alertForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = alertEmailInput.value.trim();
+            const targetPrice = parseFloat(document.getElementById('alert-target-price').value);
+
+            try {
+                const res = await fetch('http://127.0.0.1:8000/api/set-alert', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: email,
+                        product_title: currentData.best_deal.title,
+                        target_price: targetPrice,
+                        current_price: currentData.best_deal.price,
+                        store: currentData.best_deal.store
+                    })
+                });
+                const data = await res.json();
+                alertMsg.className = "mt-3 p-3 rounded-xl text-xs font-medium text-center bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+                alertMsg.textContent = data.message;
+                alertMsg.classList.remove('hidden');
+                setTimeout(() => alertModal.classList.add('hidden') || alertModal.classList.remove('flex'), 3500);
+            } catch (err) {
+                alertMsg.className = "mt-3 p-3 rounded-xl text-xs font-medium text-center bg-rose-500/20 text-rose-400";
+                alertMsg.textContent = "Error al activar alerta.";
+                alertMsg.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

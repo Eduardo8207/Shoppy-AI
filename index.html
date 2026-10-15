@@ -21,47 +21,59 @@
     </style>
 </head>
 <body class="min-h-screen bg-zinc-950 text-slate-100">
-    <div class="flex min-h-screen">
-        <aside class="flex w-16 shrink-0 flex-col justify-between border-r border-zinc-800 bg-zinc-900/90 p-2 sm:w-64 sm:p-4">
+    <div class="relative flex min-h-screen">
+        <div id="sidebar-backdrop" class="absolute inset-0 z-30 hidden bg-black/60 sm:hidden" aria-hidden="true"></div>
+        <aside id="sidebar" class="relative z-40 flex w-0 shrink-0 flex-col justify-between overflow-visible border-r-0 bg-transparent p-0 sm:w-64 sm:border-r sm:border-zinc-800 sm:bg-zinc-900/90 sm:p-4">
             <div>
-                <div class="mb-6 flex items-center justify-center gap-3 px-2 py-3 sm:justify-start">
-                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-lg font-bold text-white shadow-lg shadow-blue-600/30">S</div>
-                    <span class="hidden text-lg font-bold tracking-tight text-white sm:inline">Shoppy-AI</span>
+                <button type="button" id="sidebar-toggle" aria-label="Abrir menú de navegación" aria-expanded="false" aria-controls="sidebar-content" title="Abrir menú" class="fixed left-3 top-3 z-[60] flex w-12 flex-col items-center gap-1 rounded-xl px-1 py-2 transition hover:bg-zinc-800 sm:static sm:mb-6 sm:w-full sm:flex-row sm:gap-3 sm:px-2 sm:py-3 sm:hover:bg-transparent">
+                    <span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-lg font-bold text-white shadow-lg shadow-blue-600/30">
+                        S
+                        <i id="sidebar-toggle-icon" class="fa-solid fa-bars absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-zinc-700 text-[9px] text-white sm:hidden"></i>
+                    </span>
+                    <span id="sidebar-brand-name" class="hidden text-lg font-bold tracking-tight text-white sm:inline">Shoppy-AI</span>
+                </button>
+
+                <div id="sidebar-content" class="hidden sm:block">
+                <div id="sidebar-search" class="relative mb-6 hidden sm:block">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
+                        <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                    </span>
+                    <input type="search" aria-label="Buscar en el menú" placeholder="Buscar..." class="w-full rounded-xl border border-zinc-800 bg-black/50 py-2 pl-9 pr-3 text-xs text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none">
                 </div>
 
                 <nav class="space-y-1.5" aria-label="Menú principal">
-                    <button type="button" onclick="switchTab('search')" id="tab-search" aria-label="Buscar ofertas" title="Buscar ofertas" aria-current="page" class="w-full rounded-xl bg-zinc-800 px-2 py-2.5 text-left text-sm font-medium text-white transition hover:bg-zinc-800 sm:px-3">
-                        <i class="fa-solid fa-magnifying-glass w-5 text-blue-400"></i><span class="hidden sm:inline"> Buscar Ofertas</span>
+                    <button type="button" onclick="switchTab('search')" id="tab-search" aria-label="Buscar ofertas" title="Buscar ofertas" aria-current="page" class="flex w-full items-center justify-center gap-3 rounded-xl bg-zinc-800 px-2 py-2.5 text-left text-sm font-medium text-white transition hover:bg-zinc-800 hover:text-white sm:justify-start sm:px-3">
+                        <i class="fa-solid fa-magnifying-glass w-5 shrink-0 text-center text-blue-400"></i><span class="sidebar-label hidden sm:inline">Buscar Ofertas</span>
                     </button>
-                    <button type="button" onclick="switchTab('savings')" id="tab-savings" aria-label="Ahorros guardados" title="Ahorros guardados" class="w-full rounded-xl px-2 py-2.5 text-left text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 sm:px-3">
-                        <i class="fa-solid fa-piggy-bank w-5 text-emerald-400"></i><span class="hidden sm:inline"> Ahorros Guardados</span>
+                    <button type="button" onclick="switchTab('savings')" id="tab-savings" aria-label="Ahorros guardados" title="Ahorros guardados" class="flex w-full items-center justify-center gap-3 rounded-xl px-2 py-2.5 text-left text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white sm:justify-start sm:px-3">
+                        <i class="fa-solid fa-piggy-bank w-5 shrink-0 text-center text-emerald-400"></i><span class="sidebar-label hidden sm:inline">Ahorros Guardados</span>
                     </button>
-                    <button type="button" onclick="switchTab('coupons')" id="tab-coupons" aria-label="Cupones activos" title="Cupones activos" class="w-full rounded-xl px-2 py-2.5 text-left text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 sm:px-3">
-                        <i class="fa-solid fa-ticket w-5 text-amber-400"></i><span class="hidden sm:inline"> Cupones Activos</span>
+                    <button type="button" onclick="switchTab('coupons')" id="tab-coupons" aria-label="Cupones activos" title="Cupones activos" class="flex w-full items-center justify-center gap-3 rounded-xl px-2 py-2.5 text-left text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white sm:justify-start sm:px-3">
+                        <i class="fa-solid fa-ticket w-5 shrink-0 text-center text-amber-400"></i><span class="sidebar-label hidden sm:inline">Cupones Activos</span>
                     </button>
-                    <button type="button" onclick="switchTab('tracker')" id="tab-tracker" aria-label="Rastreador de envíos" title="Rastreador de envíos" class="w-full rounded-xl px-2 py-2.5 text-left text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 sm:px-3">
-                        <i class="fa-solid fa-truck-fast w-5 text-blue-400"></i><span class="hidden sm:inline"> Rastreador de Envíos</span>
+                    <button type="button" onclick="switchTab('tracker')" id="tab-tracker" aria-label="Rastreador de envíos" title="Rastreador de envíos" class="flex w-full items-center justify-center gap-3 rounded-xl px-2 py-2.5 text-left text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white sm:justify-start sm:px-3">
+                        <i class="fa-solid fa-truck-fast w-5 shrink-0 text-center text-blue-400"></i><span class="sidebar-label hidden sm:inline">Rastreador de Envíos</span>
                     </button>
-                    <button type="button" onclick="switchTab('products')" id="tab-products" aria-label="Mis productos" title="Mis productos" class="w-full rounded-xl px-2 py-2.5 text-left text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 sm:px-3">
-                        <i class="fa-solid fa-heart w-5 text-rose-400"></i><span class="hidden sm:inline"> Mis Productos</span>
+                    <button type="button" onclick="switchTab('products')" id="tab-products" aria-label="Mis productos" title="Mis productos" class="flex w-full items-center justify-center gap-3 rounded-xl px-2 py-2.5 text-left text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white sm:justify-start sm:px-3">
+                        <i class="fa-solid fa-heart w-5 shrink-0 text-center text-rose-400"></i><span class="sidebar-label hidden sm:inline">Mis Productos</span>
                     </button>
                 </nav>
-            </div>
+                </div>
 
-            <div class="border-t border-zinc-800 pt-4">
-                <p class="mb-3 hidden px-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500 sm:block">Abrir Apps de Compra</p>
-                <div class="grid grid-cols-1 gap-2 px-1 sm:grid-cols-4">
-                    <a href="https://www.amazon.com" target="_blank" rel="noopener noreferrer" title="Amazon" aria-label="Abrir Amazon" class="flex items-center justify-center rounded-lg bg-zinc-800/80 p-2 text-zinc-300 transition hover:bg-zinc-700">
-                        <i class="fa-brands fa-amazon text-base"></i>
+            <div id="sidebar-apps" class="mt-4 hidden border-t border-zinc-800 pt-4 sm:block">
+                <p class="sidebar-label mb-3 hidden px-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500 sm:block">Apps de Compra</p>
+                <div class="grid grid-cols-1 gap-2 px-1 sm:grid-cols-2">
+                    <a href="https://www.amazon.com" target="_blank" rel="noopener noreferrer" title="Amazon" aria-label="Abrir Amazon" class="flex items-center justify-center gap-2 rounded-xl bg-zinc-800/80 p-2 text-xs text-zinc-300 transition hover:bg-zinc-700 sm:justify-start">
+                        <i class="fa-brands fa-amazon text-sm text-amber-500"></i><span class="sidebar-app-label hidden sm:inline">Amazon</span>
                     </a>
-                    <a href="https://www.aliexpress.com" target="_blank" rel="noopener noreferrer" title="AliExpress" aria-label="Abrir AliExpress" class="flex items-center justify-center rounded-lg bg-zinc-800/80 p-2 text-orange-400 transition hover:bg-zinc-700">
-                        <i class="fa-solid fa-bag-shopping text-base"></i>
+                    <a href="https://www.aliexpress.com" target="_blank" rel="noopener noreferrer" title="AliExpress" aria-label="Abrir AliExpress" class="flex items-center justify-center gap-2 rounded-xl bg-zinc-800/80 p-2 text-xs text-zinc-300 transition hover:bg-zinc-700 sm:justify-start">
+                        <i class="fa-solid fa-bag-shopping text-sm text-orange-400"></i><span class="sidebar-app-label hidden sm:inline">AliExpress</span>
                     </a>
-                    <a href="https://www.ebay.com" target="_blank" rel="noopener noreferrer" title="eBay" aria-label="Abrir eBay" class="flex items-center justify-center rounded-lg bg-zinc-800/80 p-2 text-blue-400 transition hover:bg-zinc-700">
-                        <i class="fa-brands fa-ebay text-base"></i>
+                    <a href="https://www.ebay.com" target="_blank" rel="noopener noreferrer" title="eBay" aria-label="Abrir eBay" class="flex items-center justify-center gap-2 rounded-xl bg-zinc-800/80 p-2 text-xs text-zinc-300 transition hover:bg-zinc-700 sm:justify-start">
+                        <i class="fa-brands fa-ebay text-sm text-blue-400"></i><span class="sidebar-app-label hidden sm:inline">eBay</span>
                     </a>
-                    <a href="https://www.temu.com" target="_blank" rel="noopener noreferrer" title="Temu" aria-label="Abrir Temu" class="flex items-center justify-center rounded-lg bg-zinc-800/80 p-2 text-orange-500 transition hover:bg-zinc-700">
-                        <i class="fa-solid fa-cart-shopping text-base"></i>
+                    <a href="https://www.temu.com" target="_blank" rel="noopener noreferrer" title="Temu" aria-label="Abrir Temu" class="flex items-center justify-center gap-2 rounded-xl bg-zinc-800/80 p-2 text-xs text-zinc-300 transition hover:bg-zinc-700 sm:justify-start">
+                        <i class="fa-solid fa-cart-shopping text-sm text-orange-500"></i><span class="sidebar-app-label hidden sm:inline">Temu</span>
                     </a>
                 </div>
             </div>
@@ -70,7 +82,7 @@
         <div class="flex min-w-0 flex-1 flex-col">
 
     <!-- Top Bar: Usuario & Login -->
-    <header class="flex w-full items-center justify-between border-b border-zinc-900 px-4 py-4 sm:px-6">
+    <header class="flex w-full items-center justify-between px-4 py-4 sm:px-6">
         <div class="inline-flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-400 px-3 py-1 rounded-full text-xs font-medium">
             <i class="fa-solid fa-shield-halved"></i> Sistema Protegido
         </div>
@@ -377,6 +389,77 @@
         const authMsg = document.getElementById('auth-msg');
         let isRegisterMode = false;
 
+        const sidebar = document.getElementById('sidebar');
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+        const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+        const sidebarToggleIcon = document.getElementById('sidebar-toggle-icon');
+        const sidebarContent = document.getElementById('sidebar-content');
+        const sidebarSearch = document.getElementById('sidebar-search');
+        const sidebarApps = document.getElementById('sidebar-apps');
+        let sidebarExpanded = false;
+
+        function setSidebarExpanded(expanded) {
+            if (!window.matchMedia('(max-width: 639px)').matches) return;
+
+            sidebarExpanded = expanded;
+            sidebar.classList.toggle('absolute', expanded);
+            sidebar.classList.toggle('relative', !expanded);
+            sidebar.classList.toggle('inset-y-0', expanded);
+            sidebar.classList.toggle('left-0', expanded);
+            sidebar.classList.toggle('z-50', expanded);
+            sidebar.classList.toggle('w-64', expanded);
+            sidebar.classList.toggle('w-0', !expanded);
+            sidebar.classList.toggle('shadow-2xl', expanded);
+            sidebar.classList.toggle('p-4', expanded);
+            sidebar.classList.toggle('p-0', !expanded);
+            sidebar.classList.toggle('border-r', expanded);
+            sidebar.classList.toggle('border-r-0', !expanded);
+            sidebar.classList.toggle('border-zinc-800', expanded);
+            sidebar.classList.toggle('bg-zinc-900/90', expanded);
+            sidebar.classList.toggle('bg-transparent', !expanded);
+            sidebarToggle.classList.toggle('fixed', !expanded);
+            sidebarToggle.classList.toggle('static', expanded);
+            sidebarToggle.classList.toggle('mb-4', expanded);
+            sidebarBackdrop.classList.toggle('hidden', !expanded);
+            sidebarBackdrop.setAttribute('aria-hidden', String(!expanded));
+            sidebarToggle.setAttribute('aria-expanded', String(expanded));
+            sidebarToggle.setAttribute('aria-label', expanded ? 'Cerrar menú de navegación' : 'Abrir menú de navegación');
+            sidebarToggleIcon.classList.toggle('fa-bars', !expanded);
+            sidebarToggleIcon.classList.toggle('fa-xmark', expanded);
+            sidebarContent.classList.toggle('hidden', !expanded);
+            sidebarSearch.classList.toggle('hidden', !expanded);
+            sidebarApps.classList.toggle('hidden', !expanded);
+            document.querySelectorAll('.sidebar-label, .sidebar-app-label, #sidebar-brand-name').forEach(label => {
+                label.classList.toggle('hidden', !expanded);
+            });
+        }
+
+        sidebarToggle.addEventListener('click', () => {
+            setSidebarExpanded(!sidebarExpanded);
+        });
+        sidebarBackdrop.addEventListener('click', () => setSidebarExpanded(false));
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && sidebarExpanded) setSidebarExpanded(false);
+        });
+        window.addEventListener('resize', () => {
+            if (!window.matchMedia('(max-width: 639px)').matches && sidebarExpanded) {
+                sidebarExpanded = false;
+                sidebar.classList.remove('absolute', 'inset-y-0', 'left-0', 'z-50', 'w-64', 'shadow-2xl', 'p-4', 'border-r', 'border-zinc-800', 'bg-zinc-900/90');
+                sidebar.classList.add('relative', 'w-0', 'p-0', 'border-r-0', 'bg-transparent');
+                sidebarToggle.classList.remove('static', 'mb-4');
+                sidebarToggle.classList.add('fixed');
+                sidebarBackdrop.classList.add('hidden');
+                sidebarBackdrop.setAttribute('aria-hidden', 'true');
+                sidebarToggle.setAttribute('aria-expanded', 'false');
+                sidebarToggle.setAttribute('aria-label', 'Abrir menú de navegación');
+                sidebarToggleIcon.classList.replace('fa-xmark', 'fa-bars');
+                sidebarContent.classList.add('hidden');
+                sidebarSearch.classList.add('hidden');
+                sidebarApps.classList.add('hidden');
+                document.querySelectorAll('.sidebar-label, .sidebar-app-label, #sidebar-brand-name').forEach(label => label.classList.add('hidden'));
+            }
+        });
+
         function switchTab(tab) {
             const selectedView = document.getElementById(`view-${tab}`);
             if (!selectedView) return;
@@ -392,6 +475,8 @@
                 button.classList.toggle('text-zinc-300', !isActive);
                 button.setAttribute('aria-current', isActive ? 'page' : 'false');
             });
+
+            if (sidebarExpanded) setSidebarExpanded(false);
         }
 
         function updateSessionUI() {

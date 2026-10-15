@@ -69,6 +69,9 @@ class VerifyCodeRequest(BaseModel):
     email: str
     code: str
 
+class ResendCodeRequest(BaseModel):
+    email: str
+
 class DealOption(BaseModel):
     store: str
     price: float
@@ -103,6 +106,9 @@ class AlertResponse(BaseModel):
     message: str
 
 def send_real_gmail_code(to_email: str, code: str) -> None:
+    if not SMTP_USER or not SMTP_PASSWORD:
+        raise RuntimeError("SMTP_USER y SMTP_PASSWORD deben configurarse para enviar códigos.")
+
     msg = MIMEMultipart("alternative")
     msg["From"] = formataddr(("Shoppy-AI Soporte", SMTP_USER))
     msg["To"] = to_email
@@ -123,10 +129,32 @@ def send_real_gmail_code(to_email: str, code: str) -> None:
     """
     msg.attach(MIMEText(html_content, "html", "utf-8"))
 
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=20) as server:
         server.starttls()
         server.login(SMTP_USER, SMTP_PASSWORD)
         server.sendmail(SMTP_USER, to_email, msg.as_string())
+
+async def deliver_verification_code(email: str, code: str) -> None:
+    if not SMTP_USER or not SMTP_PASSWORD:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "El servicio de correo no está configurado. Define SMTP_USER y "
+                "SMTP_PASSWORD en las variables de entorno del backend y reinícialo."
+            ),
+        )
+
+    try:
+        await asyncio.to_thread(send_real_gmail_code, email, code)
+    except (OSError, smtplib.SMTPException, RuntimeError) as error:
+        logger.exception("Failed to send verification code email")
+        if isinstance(error, smtplib.SMTPAuthenticationError):
+            detail = "Gmail rechazó las credenciales SMTP. Revisa SMTP_USER y configura una contraseña de aplicación en SMTP_PASSWORD."
+        elif isinstance(error, (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, OSError)):
+            detail = "No se pudo conectar con Gmail SMTP. Revisa la conexión del servidor y el puerto SMTP."
+        else:
+            detail = "No se pudo enviar el código por correo. Revisa la configuración SMTP del backend."
+        raise HTTPException(status_code=503, detail=detail) from None
 
 @app.get("/")
 async def serve_frontend():
@@ -139,15 +167,6 @@ async def register_user(
     user: UserAuth,
 ):
     email = user.email.strip().lower()
-    if not SMTP_USER or not SMTP_PASSWORD:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "El servicio de correo no está configurado. Define SMTP_USER y "
-                "SMTP_PASSWORD en las variables de entorno del backend y reinícialo."
-            ),
-        )
-
     code = str(secrets.randbelow(900000) + 100000)
     db = SessionLocal()
     try:
@@ -174,21 +193,7 @@ async def register_user(
     finally:
         db.close()
 
-    try:
-        await asyncio.to_thread(send_real_gmail_code, email, code)
-    except (OSError, smtplib.SMTPException) as error:
-        logger.exception("Failed to send verification code email")
-        if isinstance(error, smtplib.SMTPAuthenticationError):
-            detail = "Gmail rechazó las credenciales SMTP. Revisa SMTP_USER y configura una contraseña de aplicación en SMTP_PASSWORD."
-        elif isinstance(error, (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, OSError)):
-            detail = "No se pudo conectar con Gmail SMTP. Revisa la conexión del servidor y el puerto SMTP."
-        else:
-            detail = "No se pudo enviar el código por correo. Revisa la configuración SMTP del backend."
-        raise HTTPException(
-            status_code=503,
-            detail=detail,
-        ) from None
-
+    await deliver_verification_code(email, code)
     verification_codes_db[email] = code
     return {
         "status": "success",
@@ -199,6 +204,29 @@ async def register_user(
             else "Código de verificación enviado al correo electrónico."
         ),
         "account_exists": existing is not None,
+    }
+
+@app.post("/api/resend-code")
+async def resend_verification_code(payload: ResendCodeRequest):
+    email = payload.email.strip().lower()
+    db = SessionLocal()
+    try:
+        user = db.query(DBUser).filter(DBUser.email == email).first()
+        if not user or user.verified:
+            raise HTTPException(
+                status_code=400,
+                detail="No hay una cuenta pendiente de verificación para este correo.",
+            )
+    finally:
+        db.close()
+
+    code = str(secrets.randbelow(900000) + 100000)
+    await deliver_verification_code(email, code)
+    verification_codes_db[email] = code
+    return {
+        "status": "success",
+        "success": True,
+        "message": "Código reenviado. Revisa tu correo y la carpeta de spam.",
     }
 
 @app.post("/api/verify-code")

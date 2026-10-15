@@ -18,6 +18,11 @@
                 font-size: 14px !important;
             }
         }
+        @media (min-width: 640px) {
+            .sidebar-collapsed-notice {
+                margin-left: 3rem;
+            }
+        }
     </style>
 </head>
 <body class="min-h-screen bg-zinc-950 text-slate-100">
@@ -82,7 +87,7 @@
 
     <!-- Top Bar: Usuario & Login -->
     <header class="relative flex w-full items-center justify-between pl-16 pr-4 py-4 sm:static sm:px-6">
-        <div class="absolute left-1/2 inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-xs font-medium text-red-400 sm:static sm:translate-x-0">
+        <div id="system-protected-notice" class="absolute left-1/2 inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-xs font-medium text-red-400 sm:static sm:translate-x-0">
             <i class="fa-solid fa-shield-halved"></i> Sistema Protegido
         </div>
         <div id="user-session-area" class="ml-auto flex items-center gap-3">
@@ -318,6 +323,41 @@
         </div>
     </div>
 
+    <!-- Modal de Verificación de 6 Dígitos -->
+    <div id="verify-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm items-center justify-center p-4">
+        <div class="relative w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-white shadow-2xl">
+            <button type="button" id="close-verify-modal" aria-label="Cerrar verificación" class="absolute right-4 top-4 text-zinc-500 transition hover:text-white">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <div class="mb-6 text-center">
+                <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-blue-500/30 bg-blue-600/20 text-xl text-blue-400">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <h3 class="text-lg font-bold">Verifica tu correo</h3>
+                <p class="mt-1 text-xs text-zinc-400">Ingresa el código de 6 dígitos que enviamos a tu cuenta.</p>
+            </div>
+
+            <form id="verify-form">
+                <div class="mb-6 flex justify-center gap-2">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" aria-label="Dígito 1 del código" class="code-input h-14 w-12 rounded-xl border border-zinc-800 bg-black text-center text-xl font-bold text-white focus:border-blue-500 focus:outline-none">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Dígito 2 del código" class="code-input h-14 w-12 rounded-xl border border-zinc-800 bg-black text-center text-xl font-bold text-white focus:border-blue-500 focus:outline-none">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Dígito 3 del código" class="code-input h-14 w-12 rounded-xl border border-zinc-800 bg-black text-center text-xl font-bold text-white focus:border-blue-500 focus:outline-none">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Dígito 4 del código" class="code-input h-14 w-12 rounded-xl border border-zinc-800 bg-black text-center text-xl font-bold text-white focus:border-blue-500 focus:outline-none">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Dígito 5 del código" class="code-input h-14 w-12 rounded-xl border border-zinc-800 bg-black text-center text-xl font-bold text-white focus:border-blue-500 focus:outline-none">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="Dígito 6 del código" class="code-input h-14 w-12 rounded-xl border border-zinc-800 bg-black text-center text-xl font-bold text-white focus:border-blue-500 focus:outline-none">
+                </div>
+
+                <button type="submit" id="verify-submit-btn" class="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition hover:bg-blue-500">
+                    Confirmar y Activar Cuenta
+                </button>
+            </form>
+
+            <p id="demo-code-banner" class="mt-4 hidden rounded-xl border border-amber-500/20 bg-amber-500/10 py-2 text-center text-[11px] text-amber-400"></p>
+            <p id="verify-msg" role="status" aria-live="polite" class="mt-3 hidden rounded-xl p-3 text-center text-xs"></p>
+        </div>
+    </div>
+
     <!-- Modal de Alerta -->
     <div id="alert-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4 z-50">
         <div class="bg-zinc-950 border border-red-900/60 rounded-2xl p-6 max-w-md w-full shadow-2xl relative">
@@ -386,11 +426,20 @@
         const authSubmitBtn = document.getElementById('auth-submit-btn');
         const toggleAuthMode = document.getElementById('toggle-auth-mode');
         const authMsg = document.getElementById('auth-msg');
+        const verifyModal = document.getElementById('verify-modal');
+        const verifyForm = document.getElementById('verify-form');
+        const verifyCodeInputs = [...document.querySelectorAll('.code-input')];
+        const verifySubmitBtn = document.getElementById('verify-submit-btn');
+        const closeVerifyModalBtn = document.getElementById('close-verify-modal');
+        const verifyMsg = document.getElementById('verify-msg');
+        const demoCodeBanner = document.getElementById('demo-code-banner');
+        let pendingRegistration = null;
         let isRegisterMode = false;
 
         const sidebar = document.getElementById('sidebar');
         const sidebarToggle = document.getElementById('sidebar-toggle');
         const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+        const systemProtectedNotice = document.getElementById('system-protected-notice');
         const sidebarContent = document.getElementById('sidebar-content');
         const sidebarSearch = document.getElementById('sidebar-search');
         const sidebarApps = document.getElementById('sidebar-apps');
@@ -417,6 +466,7 @@
                 sidebarToggle.classList.add('fixed', 'left-3', 'top-3', 'z-[60]', 'w-12', 'px-1', 'py-2');
             }
 
+            systemProtectedNotice.classList.toggle('sidebar-collapsed-notice', !expanded);
             sidebarBackdrop.classList.toggle('hidden', !expanded || !isMobile);
             sidebarBackdrop.setAttribute('aria-hidden', String(!expanded || !isMobile));
             sidebarToggle.setAttribute('aria-expanded', String(expanded));
@@ -468,18 +518,25 @@
 
         function updateSessionUI() {
             if (currentUser) {
-                userSessionArea.innerHTML = `
-                    <div class="flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-xl text-xs">
-                        <i class="fa-solid fa-user-check text-emerald-400"></i>
-                        <span class="text-white font-semibold">${currentUser.name}</span>
-                        <button id="logout-btn" class="ml-2 text-zinc-500 hover:text-red-400 cursor-pointer"><i class="fa-solid fa-right-from-bracket"></i></button>
-                    </div>
-                `;
-                document.getElementById('logout-btn').addEventListener('click', () => {
+                const sessionCard = document.createElement('div');
+                sessionCard.className = "flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-xl text-xs";
+                const userIcon = document.createElement('i');
+                userIcon.className = "fa-solid fa-user-check text-emerald-400";
+                const userName = document.createElement('span');
+                userName.className = "text-white font-semibold";
+                userName.textContent = currentUser.name;
+                const logoutButton = document.createElement('button');
+                logoutButton.type = "button";
+                logoutButton.id = "logout-btn";
+                logoutButton.className = "ml-2 text-zinc-500 hover:text-red-400 cursor-pointer";
+                logoutButton.innerHTML = '<i class="fa-solid fa-right-from-bracket"></i>';
+                logoutButton.addEventListener('click', () => {
                     localStorage.removeItem('current_user');
                     currentUser = null;
                     updateSessionUI();
                 });
+                sessionCard.append(userIcon, userName, logoutButton);
+                userSessionArea.replaceChildren(sessionCard);
             } else {
                 userSessionArea.innerHTML = `
                     <button id="open-auth-btn" aria-label="Iniciar sesión o registrarse" class="bg-red-950/40 hover:bg-red-900/40 border border-red-600/50 text-red-300 px-3 py-1.5 sm:px-4 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2">
@@ -499,6 +556,100 @@
         updateSessionUI();
         document.getElementById('open-auth-btn')?.addEventListener('click', openAuthModal);
         closeAuthModal.addEventListener('click', () => authModal.classList.add('hidden') || authModal.classList.remove('flex'));
+
+        function closeVerifyModal() {
+            verifyModal.classList.add('hidden');
+            verifyModal.classList.remove('flex');
+            verifyCodeInputs.forEach(input => input.value = '');
+            verifyMsg.classList.add('hidden');
+            pendingRegistration = null;
+        }
+
+        closeVerifyModalBtn.addEventListener('click', closeVerifyModal);
+
+        verifyCodeInputs.forEach((input, index) => {
+            input.addEventListener('input', () => {
+                input.value = input.value.replace(/\D/g, '').slice(-1);
+                if (input.value && index < verifyCodeInputs.length - 1) {
+                    verifyCodeInputs[index + 1].focus();
+                }
+            });
+
+            input.addEventListener('keydown', event => {
+                if (event.key === 'Backspace' && !input.value && index > 0) {
+                    verifyCodeInputs[index - 1].focus();
+                } else if (event.key === 'ArrowLeft' && index > 0) {
+                    verifyCodeInputs[index - 1].focus();
+                } else if (event.key === 'ArrowRight' && index < verifyCodeInputs.length - 1) {
+                    verifyCodeInputs[index + 1].focus();
+                }
+            });
+
+            input.addEventListener('paste', event => {
+                const pastedCode = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, verifyCodeInputs.length);
+                if (!pastedCode) return;
+
+                event.preventDefault();
+                pastedCode.split('').forEach((digit, digitIndex) => {
+                    verifyCodeInputs[digitIndex].value = digit;
+                });
+                verifyCodeInputs[Math.min(pastedCode.length, verifyCodeInputs.length) - 1].focus();
+            });
+        });
+
+        verifyForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            if (!pendingRegistration) return;
+
+            const code = verifyCodeInputs.map(input => input.value).join('');
+            if (code.length !== verifyCodeInputs.length) {
+                verifyMsg.className = "mt-3 rounded-xl border border-rose-500/30 bg-rose-500/20 p-3 text-center text-xs text-rose-400";
+                verifyMsg.textContent = "Ingresa los 6 dígitos del código.";
+                verifyMsg.classList.remove('hidden');
+                return;
+            }
+
+            verifySubmitBtn.disabled = true;
+            closeVerifyModalBtn.disabled = true;
+            verifySubmitBtn.textContent = "Verificando...";
+            try {
+                const response = await fetch('/api/verify-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: pendingRegistration.email, code })
+                });
+                const data = await response.json();
+                if (!response.ok || data.status !== 'success') {
+                    throw new Error(data.detail || data.message || "No se pudo verificar el código.");
+                }
+
+                currentUser = pendingRegistration;
+                localStorage.setItem('current_user', JSON.stringify(currentUser));
+                updateSessionUI();
+                verifyMsg.className = "mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/20 p-3 text-center text-xs text-emerald-400";
+                verifyMsg.textContent = data.message || "¡Cuenta verificada con éxito!";
+                verifyMsg.classList.remove('hidden');
+                demoCodeBanner.classList.add('hidden');
+                verifyForm.classList.add('hidden');
+                setTimeout(() => {
+                    closeVerifyModal();
+                    verifyForm.classList.remove('hidden');
+                    verifySubmitBtn.disabled = false;
+                    verifySubmitBtn.textContent = "Confirmar y Activar Cuenta";
+                    closeVerifyModalBtn.disabled = false;
+                }, 1500);
+            } catch (error) {
+                verifyMsg.className = "mt-3 rounded-xl border border-rose-500/30 bg-rose-500/20 p-3 text-center text-xs text-rose-400";
+                verifyMsg.textContent = error.message || "No se pudo verificar el código.";
+                verifyMsg.classList.remove('hidden');
+            } finally {
+                if (!verifyMsg.classList.contains('text-emerald-400')) {
+                    verifySubmitBtn.disabled = false;
+                    verifySubmitBtn.textContent = "Confirmar y Activar Cuenta";
+                    closeVerifyModalBtn.disabled = false;
+                }
+            }
+        });
 
         // Validación en tiempo real de criterios de contraseña
         authPassword.addEventListener('input', () => {
@@ -573,22 +724,42 @@
                 });
                 const data = await res.json();
                 if (res.ok && data.status === 'success') {
-                    if (!isRegisterMode) {
-                        currentUser = { email: authEmail.value, name: data.name || "Usuario" };
-                        localStorage.setItem('current_user', JSON.stringify(currentUser));
-                        updateSessionUI();
+                    if (isRegisterMode) {
+                        pendingRegistration = {
+                            email: authEmail.value.trim().toLowerCase(),
+                            name: authName.value.trim() || "Usuario"
+                        };
+                        authModal.classList.add('hidden');
+                        authModal.classList.remove('flex');
+                        verifyCodeInputs.forEach(input => input.value = '');
+                        verifyMsg.classList.add('hidden');
+                        verifyForm.classList.remove('hidden');
+                        verifySubmitBtn.disabled = false;
+                        verifySubmitBtn.textContent = "Confirmar y Activar Cuenta";
+                        if (data.demo_code) {
+                            demoCodeBanner.textContent = `Código de demostración: ${data.demo_code}`;
+                            demoCodeBanner.classList.remove('hidden');
+                        } else {
+                            demoCodeBanner.classList.add('hidden');
+                        }
+                        verifyModal.classList.remove('hidden');
+                        verifyModal.classList.add('flex');
+                        verifyCodeInputs[0].focus();
+                        return;
                     }
+
+                    currentUser = { email: authEmail.value.trim().toLowerCase(), name: data.name || "Usuario" };
+                    localStorage.setItem('current_user', JSON.stringify(currentUser));
+                    updateSessionUI();
                     authMsg.className = "mt-3 p-3 rounded-xl text-xs text-center bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
                     authMsg.textContent = data.message;
                     authMsg.classList.remove('hidden');
                     
-                    if (!isRegisterMode) {
-                        setTimeout(() => {
-                            authModal.classList.add('hidden');
-                            authModal.classList.remove('flex');
-                            authMsg.classList.add('hidden');
-                        }, 2000);
-                    }
+                    setTimeout(() => {
+                        authModal.classList.add('hidden');
+                        authModal.classList.remove('flex');
+                        authMsg.classList.add('hidden');
+                    }, 2000);
                 } else {
                     throw new Error(data.detail || data.message);
                 }

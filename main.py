@@ -34,6 +34,9 @@ class DBUser(Base):
 
 Base.metadata.create_all(bind=engine)
 
+# Almacenamiento temporal en memoria; se pierde al reiniciar el proceso.
+verification_codes_db = {}
+
 app = FastAPI(title="AI Shopping Deal Finder - Cloud Ready")
 
 app.add_middleware(
@@ -58,6 +61,10 @@ class UserAuth(BaseModel):
     email: str
     password: str
     name: Optional[str] = "Usuario"
+
+class VerifyCodeRequest(BaseModel):
+    email: str
+    code: str
 
 class DealOption(BaseModel):
     store: str
@@ -124,6 +131,7 @@ async def register_user(
 ):
     email = user.email.strip().lower()
     token = secrets.token_urlsafe(32)
+    code = str(secrets.randbelow(900000) + 100000)
     db = SessionLocal()
     try:
         existing = db.query(DBUser).filter(DBUser.email == email).first()
@@ -148,12 +156,46 @@ async def register_user(
             message = f"Registro exitoso. Revisa tu bandeja de entrada en {email} para verificar tu cuenta."
 
         db.commit()
+        verification_codes_db[email] = code
     finally:
         db.close()
 
+    print(f"[VERIFICACIÓN] Código para {email}: {code}")
     verification_url = f"{request.base_url}api/verify-email?token={token}"
     background_tasks.add_task(send_verification_email, email, verification_url)
-    return {"status": "success", "message": message}
+    return {
+        "status": "success",
+        "success": True,
+        "message": message,
+        "demo_code": code,
+    }
+
+@app.post("/api/verify-code")
+async def verify_code(payload: VerifyCodeRequest):
+    email = payload.email.strip().lower()
+    stored_code = verification_codes_db.get(email)
+
+    if not stored_code or stored_code != payload.code:
+        raise HTTPException(status_code=400, detail="Código incorrecto o expirado")
+
+    db = SessionLocal()
+    try:
+        user = db.query(DBUser).filter(DBUser.email == email).first()
+        if not user:
+            raise HTTPException(status_code=400, detail="No existe una cuenta pendiente de verificación")
+
+        user.verified = True
+        user.verification_token = None
+        db.commit()
+    finally:
+        db.close()
+
+    del verification_codes_db[email]
+    return {
+        "status": "success",
+        "success": True,
+        "message": "¡Cuenta verificada con éxito!",
+    }
 
 @app.get("/api/verify-email", response_class=HTMLResponse)
 async def verify_email(token: str = Query(...)):

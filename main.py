@@ -1,10 +1,12 @@
 import json
 import urllib.parse
 import smtplib
-import uuid
+import secrets
+import html
+from pathlib import Path
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -90,64 +92,23 @@ class AlertResponse(BaseModel):
     status: str
     message: str
 
-def send_verification_email(recipient_email: str, name: str, token: str, base_url: str) -> bool:
-    try:
-        msg = MIMEMultipart('alternative')
-        msg['From'] = f"AI Shopping Agent <{SENDER_EMAIL}>"
-        msg['To'] = recipient_email
-        msg['Subject'] = "✨ Verifica tu cuenta en AI Shopping Agent"
+def send_verification_email(recipient_email: str, verification_url: str) -> None:
+    template_path = Path(__file__).resolve().parent / "templates" / "email_verification.html"
+    html_content = template_path.read_text(encoding="utf-8").replace(
+        "{{ verification_url }}",
+        html.escape(verification_url, quote=True),
+    )
 
-        verify_url = f"{base_url}api/verify-email?token={token}"
+    msg = MIMEMultipart('alternative')
+    msg['From'] = f"Shoppy-AI <{SENDER_EMAIL}>"
+    msg['To'] = recipient_email
+    msg['Subject'] = "Verifica tu cuenta en Shoppy-AI"
+    msg.attach(MIMEText(html_content, 'html', 'utf-8'))
 
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                body {{ background-color: #09090b; color: #f4f4f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; }}
-                .container {{ max-width: 600px; margin: 40px auto; background: #18181b; border: 1px solid #27272a; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }}
-                .header {{ background: linear-gradient(135deg, #7f1d1d, #000000); padding: 30px; text-align: center; border-bottom: 2px solid #991b1b; }}
-                .logo-text {{ color: #ffffff; font-size: 24px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; margin: 0; }}
-                .logo-text span {{ color: #ef4444; }}
-                .content {{ padding: 40px 30px; text-align: left; }}
-                .greeting {{ font-size: 20px; font-weight: bold; color: #ffffff; margin-bottom: 20px; }}
-                .text {{ font-size: 14px; color: #a1a1aa; line-height: 1.6; margin-bottom: 30px; }}
-                .btn {{ display: inline-block; background-color: #dc2626; color: #ffffff !important; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-weight: bold; font-size: 14px; box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4); text-align: center; }}
-                .footer {{ background: #09090b; padding: 20px; text-align: center; font-size: 12px; color: #52525b; border-top: 1px solid #27272a; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1 class="logo-text">Shopping Agent <span>IA</span></h1>
-                </div>
-                <div class="content">
-                    <div class="greeting">¡Hola, {name}!</div>
-                    <p class="text">Has registrado una nueva cuenta en nuestra plataforma global de compras. Haz clic en el botón de abajo para verificar tu correo electrónico y activar tu acceso:</p>
-                    <div style="text-align: center;">
-                        <a href="{verify_url}" class="btn">Verificar mi cuenta</a>
-                    </div>
-                </div>
-                <div class="footer">
-                    &copy; 2026 AI Shopping Agent. Todos los derechos reservados.
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-
-        msg.attach(MIMEText(html_content, 'html', 'utf-8'))
-
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
         server.starttls()
         server.login(SENDER_EMAIL, SENDER_PASSWORD)
         server.sendmail(SENDER_EMAIL, recipient_email, msg.as_string())
-        server.quit()
-        return True
-    except Exception as e:
-        print(f"Error al enviar correo: {e}")
-        return False
 
 @app.get("/")
 async def serve_frontend():
@@ -156,41 +117,43 @@ async def serve_frontend():
     return {"message": "API Activa. Coloca tu index.html en el directorio raíz."}
 
 @app.post("/api/register")
-async def register_user(user: UserAuth, request: Request):
+async def register_user(
+    user: UserAuth,
+    request: Request,
+    background_tasks: BackgroundTasks,
+):
     email = user.email.strip().lower()
+    token = secrets.token_urlsafe(32)
     db = SessionLocal()
-    existing = db.query(DBUser).filter(DBUser.email == email).first()
-    
-    if existing:
-        db.close()
-        if existing.verified:
-            raise HTTPException(status_code=400, detail="Este correo ya está registrado y verificado. Inicia sesión.")
-        else:
-            token = str(uuid.uuid4())
-            existing.verification_token = token
-            db.commit()
-            base_url = str(request.base_url)
-            send_verification_email(email, user.name, token, base_url)
-            return {"status": "success", "message": "La cuenta ya existía sin verificar. Te hemos reenviado el correo."}
-    
-    token = str(uuid.uuid4())
-    new_user = DBUser(
-        email=email,
-        name=user.name,
-        password=user.password,
-        verified=False,
-        verification_token=token
-    )
-    db.add(new_user)
-    db.commit()
-    db.close()
+    try:
+        existing = db.query(DBUser).filter(DBUser.email == email).first()
 
-    base_url = str(request.base_url)
-    success = send_verification_email(email, user.name, token, base_url)
-    if not success:
-        raise HTTPException(status_code=500, detail="No se pudo enviar el correo SMTP de verificación.")
-    
-    return {"status": "success", "message": f"¡Registro exitoso! Revisa tu bandeja de entrada en {email} para verificar tu cuenta."}
+        if existing and existing.verified:
+            raise HTTPException(
+                status_code=400,
+                detail="Este correo ya esta registrado y verificado. Inicia sesion.",
+            )
+
+        if existing:
+            existing.verification_token = token
+            message = "La cuenta ya existia sin verificar. Te hemos reenviado el correo."
+        else:
+            db.add(DBUser(
+                email=email,
+                name=user.name,
+                password=user.password,
+                verified=False,
+                verification_token=token,
+            ))
+            message = f"Registro exitoso. Revisa tu bandeja de entrada en {email} para verificar tu cuenta."
+
+        db.commit()
+    finally:
+        db.close()
+
+    verification_url = f"{request.base_url}api/verify-email?token={token}"
+    background_tasks.add_task(send_verification_email, email, verification_url)
+    return {"status": "success", "message": message}
 
 @app.get("/api/verify-email", response_class=HTMLResponse)
 async def verify_email(token: str = Query(...)):
@@ -217,7 +180,8 @@ async def verify_email(token: str = Query(...)):
     <html><body style="background:#09090b;color:#f4f4f5;text-align:center;font-family:sans-serif;padding-top:80px;">
         <div style="max-width:400px;margin:auto;background:#18181b;border:1px solid #27272a;padding:40px;border-radius:16px;">
             <h2 style="color:#10b981;margin-top:0;">¡Cuenta Verificada con Éxito!</h2>
-            <p style="color:#a1a1aa;font-size:14px;">Tu correo ha sido confirmado correctamente. Ya puedes cerrar esta pestaña e iniciar sesión en el Asistente de Compras.</p>
+            <p style="color:#a1a1aa;font-size:14px;">Tu correo ha sido confirmado correctamente. Ya puedes iniciar sesión en Shoppy-AI.</p>
+            <a href="/" style="color:#3b82f6;">Ir al inicio de sesión</a>
         </div>
     </body></html>
     """

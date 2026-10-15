@@ -20,10 +20,57 @@
         }
     </style>
 </head>
-<body class="bg-black text-slate-100 min-h-screen flex flex-col items-center justify-between p-4 sm:p-8">
+<body class="min-h-screen bg-zinc-950 text-slate-100">
+    <div class="flex min-h-screen">
+        <aside class="flex w-16 shrink-0 flex-col justify-between border-r border-zinc-800 bg-zinc-900/90 p-2 sm:w-64 sm:p-4">
+            <div>
+                <div class="mb-6 flex items-center justify-center gap-3 px-2 py-3 sm:justify-start">
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-lg font-bold text-white shadow-lg shadow-blue-600/30">S</div>
+                    <span class="hidden text-lg font-bold tracking-tight text-white sm:inline">Shoppy-AI</span>
+                </div>
+
+                <nav class="space-y-1.5" aria-label="Menú principal">
+                    <button type="button" onclick="switchTab('search')" id="tab-search" aria-label="Buscar ofertas" title="Buscar ofertas" aria-current="page" class="w-full rounded-xl bg-zinc-800 px-2 py-2.5 text-left text-sm font-medium text-white transition hover:bg-zinc-800 sm:px-3">
+                        <i class="fa-solid fa-magnifying-glass w-5 text-blue-400"></i><span class="hidden sm:inline"> Buscar Ofertas</span>
+                    </button>
+                    <button type="button" onclick="switchTab('savings')" id="tab-savings" aria-label="Ahorros guardados" title="Ahorros guardados" class="w-full rounded-xl px-2 py-2.5 text-left text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 sm:px-3">
+                        <i class="fa-solid fa-piggy-bank w-5 text-emerald-400"></i><span class="hidden sm:inline"> Ahorros Guardados</span>
+                    </button>
+                    <button type="button" onclick="switchTab('coupons')" id="tab-coupons" aria-label="Cupones activos" title="Cupones activos" class="w-full rounded-xl px-2 py-2.5 text-left text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 sm:px-3">
+                        <i class="fa-solid fa-ticket w-5 text-amber-400"></i><span class="hidden sm:inline"> Cupones Activos</span>
+                    </button>
+                    <button type="button" onclick="switchTab('tracker')" id="tab-tracker" aria-label="Rastreador de envíos" title="Rastreador de envíos" class="w-full rounded-xl px-2 py-2.5 text-left text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 sm:px-3">
+                        <i class="fa-solid fa-truck-fast w-5 text-blue-400"></i><span class="hidden sm:inline"> Rastreador de Envíos</span>
+                    </button>
+                    <button type="button" onclick="switchTab('products')" id="tab-products" aria-label="Mis productos" title="Mis productos" class="w-full rounded-xl px-2 py-2.5 text-left text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 sm:px-3">
+                        <i class="fa-solid fa-heart w-5 text-rose-400"></i><span class="hidden sm:inline"> Mis Productos</span>
+                    </button>
+                </nav>
+            </div>
+
+            <div class="border-t border-zinc-800 pt-4">
+                <p class="mb-3 hidden px-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500 sm:block">Abrir Apps de Compra</p>
+                <div class="grid grid-cols-1 gap-2 px-1 sm:grid-cols-4">
+                    <a href="https://www.amazon.com" target="_blank" rel="noopener noreferrer" title="Amazon" aria-label="Abrir Amazon" class="flex items-center justify-center rounded-lg bg-zinc-800/80 p-2 text-zinc-300 transition hover:bg-zinc-700">
+                        <i class="fa-brands fa-amazon text-base"></i>
+                    </a>
+                    <a href="https://www.aliexpress.com" target="_blank" rel="noopener noreferrer" title="AliExpress" aria-label="Abrir AliExpress" class="flex items-center justify-center rounded-lg bg-zinc-800/80 p-2 text-orange-400 transition hover:bg-zinc-700">
+                        <i class="fa-solid fa-bag-shopping text-base"></i>
+                    </a>
+                    <a href="https://www.ebay.com" target="_blank" rel="noopener noreferrer" title="eBay" aria-label="Abrir eBay" class="flex items-center justify-center rounded-lg bg-zinc-800/80 p-2 text-blue-400 transition hover:bg-zinc-700">
+                        <i class="fa-brands fa-ebay text-base"></i>
+                    </a>
+                    <a href="https://www.temu.com" target="_blank" rel="noopener noreferrer" title="Temu" aria-label="Abrir Temu" class="flex items-center justify-center rounded-lg bg-zinc-800/80 p-2 text-orange-500 transition hover:bg-zinc-700">
+                        <i class="fa-solid fa-cart-shopping text-base"></i>
+                    </a>
+                </div>
+            </div>
+        </aside>
+
+        <div class="flex min-w-0 flex-1 flex-col">
 
     <!-- Top Bar: Usuario & Login -->
-    <header class="w-full max-w-4xl flex justify-between items-center mb-6 border-b border-zinc-900 pb-4">
+    <header class="flex w-full items-center justify-between border-b border-zinc-900 px-4 py-4 sm:px-6">
         <div class="inline-flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-400 px-3 py-1 rounded-full text-xs font-medium">
             <i class="fa-solid fa-shield-halved"></i> Sistema Protegido
         </div>
@@ -35,7 +82,7 @@
     </header>
 
     <!-- Main Container -->
-    <main class="w-full max-w-4xl flex-grow">
+    <main id="view-search" role="tabpanel" class="w-full flex-grow p-4 sm:p-6">
         
         <div class="text-center mb-8">
             <h1 class="text-3xl sm:text-5xl font-black tracking-tight text-white mb-2 uppercase">
@@ -170,6 +217,61 @@
         </div>
     </main>
 
+    <section id="view-savings" role="tabpanel" class="hidden flex-grow p-4 sm:p-6">
+        <div class="mb-6">
+            <h2 class="text-xl font-bold text-white">Ahorros Guardados</h2>
+            <p class="mt-1 text-sm text-zinc-400">Aquí aparecerán las ofertas que guardes.</p>
+        </div>
+        <div class="rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-center">
+            <i class="fa-solid fa-piggy-bank mb-3 text-2xl text-emerald-400"></i>
+            <p class="text-sm text-zinc-300">Todavía no hay ahorros guardados.</p>
+        </div>
+    </section>
+
+    <section id="view-coupons" role="tabpanel" class="hidden flex-grow p-4 sm:p-6">
+        <div class="mb-6">
+            <h2 class="text-xl font-bold text-white">Cupones Activos</h2>
+            <p class="mt-1 text-sm text-zinc-400">Consulta aquí los cupones disponibles para tus compras.</p>
+        </div>
+        <div class="rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-center">
+            <i class="fa-solid fa-ticket mb-3 text-2xl text-amber-400"></i>
+            <p class="text-sm text-zinc-300">No hay cupones activos por el momento.</p>
+        </div>
+    </section>
+
+    <section id="view-tracker" role="tabpanel" class="hidden flex-grow space-y-6 p-4 sm:p-6">
+        <h2 class="text-xl font-bold text-white">Información y Rastreo de Pedidos</h2>
+        <div class="flex flex-col justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:flex-row md:items-center">
+            <div class="flex items-center gap-4">
+                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-400">
+                    <i class="fa-solid fa-box text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="text-sm font-semibold text-zinc-100">Funda de iPhone 13 Pro Max + Cristal Templado</h3>
+                    <p class="text-xs text-zinc-400">Tienda: AliExpress &bull; Pedido #9821301</p>
+                    <p class="mt-1 text-[11px] text-zinc-500">Pedido de ejemplo</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-400">En tránsito</span>
+                <a href="https://www.aliexpress.com" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 rounded-xl bg-zinc-800 px-3.5 py-2 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-700">
+                    Ver en App <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section id="view-products" role="tabpanel" class="hidden flex-grow p-4 sm:p-6">
+        <div class="mb-6">
+            <h2 class="text-xl font-bold text-white">Mis Productos</h2>
+            <p class="mt-1 text-sm text-zinc-400">Los productos que marques como favoritos aparecerán aquí.</p>
+        </div>
+        <div class="rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-center">
+            <i class="fa-solid fa-heart mb-3 text-2xl text-rose-400"></i>
+            <p class="text-sm text-zinc-300">Todavía no tienes productos guardados.</p>
+        </div>
+    </section>
+
     <!-- Modal de Login / Registro -->
     <div id="auth-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4 z-50">
         <div class="bg-zinc-950 border border-red-900/60 rounded-2xl p-6 max-w-sm w-full shadow-2xl relative">
@@ -247,9 +349,12 @@
     </div>
 
     <!-- Footer -->
-    <footer class="w-full max-w-4xl text-center mt-12 text-xs text-zinc-600 py-4">
+    <footer class="mt-auto w-full border-t border-zinc-900 px-4 py-4 text-center text-xs text-zinc-600 sm:px-6">
         AI Shopping Agent &copy; 2026 &bull; Todos los derechos reservados
     </footer>
+
+        </div>
+    </div>
 
     <!-- Script Principal -->
     <script>
@@ -271,6 +376,23 @@
         const toggleAuthMode = document.getElementById('toggle-auth-mode');
         const authMsg = document.getElementById('auth-msg');
         let isRegisterMode = false;
+
+        function switchTab(tab) {
+            const selectedView = document.getElementById(`view-${tab}`);
+            if (!selectedView) return;
+
+            document.querySelectorAll('[role="tabpanel"]').forEach(view => {
+                view.classList.toggle('hidden', view !== selectedView);
+            });
+
+            document.querySelectorAll('[id^="tab-"]').forEach(button => {
+                const isActive = button.id === `tab-${tab}`;
+                button.classList.toggle('bg-zinc-800', isActive);
+                button.classList.toggle('text-white', isActive);
+                button.classList.toggle('text-zinc-300', !isActive);
+                button.setAttribute('aria-current', isActive ? 'page' : 'false');
+            });
+        }
 
         function updateSessionUI() {
             if (currentUser) {

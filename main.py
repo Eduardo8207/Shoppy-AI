@@ -57,8 +57,8 @@ client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 # Configuración SMTP proporcionada mediante variables de entorno.
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("SMTP_USER")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
+SMTP_USER = (os.environ.get("SMTP_USER") or "").strip()
+SMTP_PASSWORD = "".join((os.environ.get("SMTP_PASSWORD") or "").split())
 
 class UserAuth(BaseModel):
     email: str
@@ -103,9 +103,6 @@ class AlertResponse(BaseModel):
     message: str
 
 def send_real_gmail_code(to_email: str, code: str) -> None:
-    if not SMTP_USER or not SMTP_PASSWORD:
-        raise RuntimeError("SMTP_USER y SMTP_PASSWORD deben configurarse para enviar códigos.")
-
     msg = MIMEMultipart("alternative")
     msg["From"] = formataddr(("Shoppy-AI Soporte", SMTP_USER))
     msg["To"] = to_email
@@ -142,6 +139,15 @@ async def register_user(
     user: UserAuth,
 ):
     email = user.email.strip().lower()
+    if not SMTP_USER or not SMTP_PASSWORD:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "El servicio de correo no está configurado. Define SMTP_USER y "
+                "SMTP_PASSWORD en las variables de entorno del backend y reinícialo."
+            ),
+        )
+
     code = str(secrets.randbelow(900000) + 100000)
     db = SessionLocal()
     try:
@@ -149,8 +155,8 @@ async def register_user(
 
         if existing and existing.verified:
             raise HTTPException(
-                status_code=400,
-                detail="Este correo ya esta registrado y verificado. Inicia sesion.",
+                status_code=409,
+                detail="Ya existe una cuenta verificada con este correo. Inicia sesión.",
             )
 
         if existing:
@@ -170,18 +176,29 @@ async def register_user(
 
     try:
         await asyncio.to_thread(send_real_gmail_code, email, code)
-    except (OSError, smtplib.SMTPException, RuntimeError):
+    except (OSError, smtplib.SMTPException) as error:
         logger.exception("Failed to send verification code email")
+        if isinstance(error, smtplib.SMTPAuthenticationError):
+            detail = "Gmail rechazó las credenciales SMTP. Revisa SMTP_USER y configura una contraseña de aplicación en SMTP_PASSWORD."
+        elif isinstance(error, (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, OSError)):
+            detail = "No se pudo conectar con Gmail SMTP. Revisa la conexión del servidor y el puerto SMTP."
+        else:
+            detail = "No se pudo enviar el código por correo. Revisa la configuración SMTP del backend."
         raise HTTPException(
             status_code=503,
-            detail="No se pudo enviar el código de verificación. Intenta nuevamente más tarde.",
+            detail=detail,
         ) from None
 
     verification_codes_db[email] = code
     return {
         "status": "success",
         "success": True,
-        "message": "Código de verificación enviado al correo electrónico.",
+        "message": (
+            "Ya existe una cuenta pendiente de verificación. Enviamos un nuevo código a tu correo."
+            if existing
+            else "Código de verificación enviado al correo electrónico."
+        ),
+        "account_exists": existing is not None,
     }
 
 @app.post("/api/verify-code")

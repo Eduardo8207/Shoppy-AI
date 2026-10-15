@@ -2,11 +2,8 @@ import asyncio
 import json
 import logging
 import urllib.parse
-import smtplib
 import secrets
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.utils import formataddr
+import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,11 +51,10 @@ app.add_middleware(
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
-# Configuración SMTP proporcionada mediante variables de entorno.
-SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = (os.environ.get("SMTP_USER") or "").strip()
-SMTP_PASSWORD = "".join((os.environ.get("SMTP_PASSWORD") or "").split())
+# Clave de Brevo proporcionada mediante variables de entorno.
+BREVO_API_KEY = (os.environ.get("BREVO_API_KEY") or "").strip()
+BREVO_EMAIL_URL = "https://api.brevo.com/v3/smtp/email"
+VERIFICATION_SENDER_EMAIL = "velaeduardo365@gmail.com"
 
 class UserAuth(BaseModel):
     email: str
@@ -105,56 +101,71 @@ class AlertResponse(BaseModel):
     status: str
     message: str
 
-def send_real_gmail_code(to_email: str, code: str) -> None:
-    if not SMTP_USER or not SMTP_PASSWORD:
-        raise RuntimeError("SMTP_USER y SMTP_PASSWORD deben configurarse para enviar códigos.")
+def send_http_email_code(to_email: str, code: str) -> None:
+    if not BREVO_API_KEY:
+        raise RuntimeError("BREVO_API_KEY no está configurada.")
 
-    msg = MIMEMultipart("alternative")
-    msg["From"] = formataddr(("Shoppy-AI Soporte", SMTP_USER))
-    msg["To"] = to_email
-    msg["Subject"] = f"Tu código de verificación es {code}"
-
-    html_content = f"""
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #09090b; color: #fff; padding: 30px; border-radius: 16px; max-width: 480px; margin: auto; border: 1px solid #27272a;">
-        <div style="text-align: center; margin-bottom: 20px;">
-            <span style="background: #2563eb; color: white; padding: 10px 14px; border-radius: 12px; font-weight: bold; font-size: 18px;">S</span>
-            <h2 style="color: #ffffff; margin-top: 15px; font-size: 20px;">Verificación de Shoppy-AI</h2>
+    payload = {
+        "sender": {
+            "name": "Shoppy-AI Soporte",
+            "email": VERIFICATION_SENDER_EMAIL,
+        },
+        "to": [{"email": to_email}],
+        "subject": f"Tu código de verificación es {code}",
+        "htmlContent": f"""
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #09090b; color: #fff; padding: 30px; border-radius: 16px; max-width: 480px; margin: auto; border: 1px solid #27272a;">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <span style="background: #2563eb; color: white; padding: 10px 14px; border-radius: 12px; font-weight: bold; font-size: 18px;">S</span>
+                <h2 style="color: #ffffff; margin-top: 15px; font-size: 20px;">Verificación de Shoppy-AI</h2>
+            </div>
+            <p style="color: #a1a1aa; font-size: 14px; text-align: center;">Usa el siguiente código de 6 dígitos para activar tu cuenta:</p>
+            <div style="font-size: 32px; font-weight: bold; background: #18181b; color: #3b82f6; padding: 15px; border-radius: 12px; text-align: center; letter-spacing: 6px; margin: 20px 0; border: 1px solid #27272a;">
+                {code}
+            </div>
+            <p style="font-size: 12px; color: #71717a; text-align: center;">Si no solicitaste este código, puedes ignorar este mensaje de forma segura.</p>
         </div>
-        <p style="color: #a1a1aa; font-size: 14px; text-align: center;">Usa el siguiente código de 6 dígitos para activar tu cuenta:</p>
-        <div style="font-size: 32px; font-weight: bold; background: #18181b; color: #3b82f6; padding: 15px; border-radius: 12px; text-align: center; letter-spacing: 6px; margin: 20px 0; border: 1px solid #27272a;">
-            {code}
-        </div>
-        <p style="font-size: 12px; color: #71717a; text-align: center;">Si no solicitaste este código, puedes ignorar este mensaje de forma segura.</p>
-    </div>
-    """
-    msg.attach(MIMEText(html_content, "html", "utf-8"))
-
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=20) as server:
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(SMTP_USER, to_email, msg.as_string())
+        """,
+    }
+    response = requests.post(
+        BREVO_EMAIL_URL,
+        json=payload,
+        headers={
+            "accept": "application/json",
+            "api-key": BREVO_API_KEY,
+            "content-type": "application/json",
+        },
+        timeout=20,
+    )
+    if response.status_code not in (200, 201, 202):
+        logger.error("Brevo rejected verification email with HTTP %s", response.status_code)
+        if response.status_code in (401, 403):
+            message = "Brevo rechazó BREVO_API_KEY. Comprueba que la clave sea válida y esté activa."
+        elif response.status_code == 400:
+            message = "Brevo rechazó los datos del correo. Verifica que el remitente esté autorizado en Brevo."
+        elif response.status_code == 429:
+            message = "Brevo limitó temporalmente los envíos. Espera un momento e inténtalo de nuevo."
+        else:
+            message = f"Brevo rechazó el envío (HTTP {response.status_code})."
+        raise RuntimeError(message)
 
 async def deliver_verification_code(email: str, code: str) -> None:
-    if not SMTP_USER or not SMTP_PASSWORD:
+    if not BREVO_API_KEY:
         raise HTTPException(
             status_code=503,
-            detail=(
-                "El servicio de correo no está configurado. Define SMTP_USER y "
-                "SMTP_PASSWORD en las variables de entorno del backend y reinícialo."
-            ),
+            detail="El servicio de correo no está configurado. Define BREVO_API_KEY en Render y reinicia el backend.",
         )
 
     try:
-        await asyncio.to_thread(send_real_gmail_code, email, code)
-    except (OSError, smtplib.SMTPException, RuntimeError) as error:
-        logger.exception("Failed to send verification code email")
-        if isinstance(error, smtplib.SMTPAuthenticationError):
-            detail = "Gmail rechazó las credenciales SMTP. Revisa SMTP_USER y configura una contraseña de aplicación en SMTP_PASSWORD."
-        elif isinstance(error, (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, OSError)):
-            detail = "No se pudo conectar con Gmail SMTP. Revisa la conexión del servidor y el puerto SMTP."
-        else:
-            detail = "No se pudo enviar el código por correo. Revisa la configuración SMTP del backend."
-        raise HTTPException(status_code=503, detail=detail) from None
+        await asyncio.to_thread(send_http_email_code, email, code)
+    except requests.RequestException as error:
+        logger.warning("Could not reach Brevo email API: %s", error)
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo conectar con la API de Brevo. Intenta nuevamente más tarde.",
+        ) from None
+    except RuntimeError as error:
+        logger.error("Brevo email delivery failed: %s", error)
+        raise HTTPException(status_code=503, detail=str(error)) from None
 
 @app.get("/")
 async def serve_frontend():

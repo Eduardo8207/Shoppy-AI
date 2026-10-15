@@ -1,18 +1,21 @@
+import asyncio
 import json
+import logging
 import urllib.parse
 import smtplib
 import secrets
-import html
-from pathlib import Path
-from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, Request
+from email.mime.text import MIMEText
+from email.utils import formataddr
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 from google import genai
 import os
+
+logger = logging.getLogger(__name__)
 
 # Base de datos SQLite con SQLAlchemy
 from sqlalchemy import create_engine, Column, String, Boolean
@@ -51,11 +54,11 @@ app.add_middleware(
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
-# Credenciales SMTP
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-SENDER_EMAIL = "velaeduardo365@gmail.com"
-SENDER_PASSWORD = "uaje tpew okyj oboz"
+# Configuración SMTP proporcionada mediante variables de entorno.
+SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SMTP_USER")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
 
 class UserAuth(BaseModel):
     email: str
@@ -99,23 +102,34 @@ class AlertResponse(BaseModel):
     status: str
     message: str
 
-def send_verification_email(recipient_email: str, verification_url: str) -> None:
-    template_path = Path(__file__).resolve().parent / "templates" / "email_verification.html"
-    html_content = template_path.read_text(encoding="utf-8").replace(
-        "{{ verification_url }}",
-        html.escape(verification_url, quote=True),
-    )
+def send_real_gmail_code(to_email: str, code: str) -> None:
+    if not SMTP_USER or not SMTP_PASSWORD:
+        raise RuntimeError("SMTP_USER y SMTP_PASSWORD deben configurarse para enviar códigos.")
 
-    msg = MIMEMultipart('alternative')
-    msg['From'] = f"Shoppy-AI <{SENDER_EMAIL}>"
-    msg['To'] = recipient_email
-    msg['Subject'] = "Verifica tu cuenta en Shoppy-AI"
-    msg.attach(MIMEText(html_content, 'html', 'utf-8'))
+    msg = MIMEMultipart("alternative")
+    msg["From"] = formataddr(("Shoppy-AI Soporte", SMTP_USER))
+    msg["To"] = to_email
+    msg["Subject"] = f"Tu código de verificación es {code}"
+
+    html_content = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #09090b; color: #fff; padding: 30px; border-radius: 16px; max-width: 480px; margin: auto; border: 1px solid #27272a;">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <span style="background: #2563eb; color: white; padding: 10px 14px; border-radius: 12px; font-weight: bold; font-size: 18px;">S</span>
+            <h2 style="color: #ffffff; margin-top: 15px; font-size: 20px;">Verificación de Shoppy-AI</h2>
+        </div>
+        <p style="color: #a1a1aa; font-size: 14px; text-align: center;">Usa el siguiente código de 6 dígitos para activar tu cuenta:</p>
+        <div style="font-size: 32px; font-weight: bold; background: #18181b; color: #3b82f6; padding: 15px; border-radius: 12px; text-align: center; letter-spacing: 6px; margin: 20px 0; border: 1px solid #27272a;">
+            {code}
+        </div>
+        <p style="font-size: 12px; color: #71717a; text-align: center;">Si no solicitaste este código, puedes ignorar este mensaje de forma segura.</p>
+    </div>
+    """
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
 
     with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
         server.starttls()
-        server.login(SENDER_EMAIL, SENDER_PASSWORD)
-        server.sendmail(SENDER_EMAIL, recipient_email, msg.as_string())
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.sendmail(SMTP_USER, to_email, msg.as_string())
 
 @app.get("/")
 async def serve_frontend():
@@ -126,11 +140,8 @@ async def serve_frontend():
 @app.post("/api/register")
 async def register_user(
     user: UserAuth,
-    request: Request,
-    background_tasks: BackgroundTasks,
 ):
     email = user.email.strip().lower()
-    token = secrets.token_urlsafe(32)
     code = str(secrets.randbelow(900000) + 100000)
     db = SessionLocal()
     try:
@@ -143,31 +154,34 @@ async def register_user(
             )
 
         if existing:
-            existing.verification_token = token
-            message = "La cuenta ya existia sin verificar. Te hemos reenviado el correo."
+            existing.verification_token = None
         else:
             db.add(DBUser(
                 email=email,
                 name=user.name,
                 password=user.password,
                 verified=False,
-                verification_token=token,
+                verification_token=None,
             ))
-            message = f"Registro exitoso. Revisa tu bandeja de entrada en {email} para verificar tu cuenta."
 
         db.commit()
-        verification_codes_db[email] = code
     finally:
         db.close()
 
-    print(f"[VERIFICACIÓN] Código para {email}: {code}")
-    verification_url = f"{request.base_url}api/verify-email?token={token}"
-    background_tasks.add_task(send_verification_email, email, verification_url)
+    try:
+        await asyncio.to_thread(send_real_gmail_code, email, code)
+    except (OSError, smtplib.SMTPException, RuntimeError):
+        logger.exception("Failed to send verification code email")
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo enviar el código de verificación. Intenta nuevamente más tarde.",
+        ) from None
+
+    verification_codes_db[email] = code
     return {
         "status": "success",
         "success": True,
-        "message": message,
-        "demo_code": code,
+        "message": "Código de verificación enviado al correo electrónico.",
     }
 
 @app.post("/api/verify-code")

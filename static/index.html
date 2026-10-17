@@ -3,7 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI Shopping Deal Finder - Asistente Inteligente</title>
+    <title>Shoppy-AI | Tu Asistente de Compras Inteligente</title>
+    <meta name="description" content="Encuentra las mejores ofertas, compara precios en tiempo real y ahorra dinero con nuestra Inteligencia Artificial basada en eBay.">
+    <meta name="keywords" content="ofertas, compras online, asistente virtual, IA, ahorrar dinero, comparar precios, eBay">
+    <meta name="author" content="Shoppy-AI">
+    <meta property="og:title" content="Shoppy-AI | Tu Asistente de Compras Inteligente">
+    <meta property="og:description" content="Encuentra las mejores ofertas, compara precios en tiempo real y ahorra dinero con nuestra Inteligencia Artificial basada en eBay.">
+    <meta property="og:type" content="website">
     <link rel="icon" type="image/png" href="https://img.icons8.com/color/48/shopping-cart--v1.png">
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -194,6 +200,7 @@
                     <div class="space-y-2 pr-12">
                         <div class="flex items-center gap-2">
                             <span id="best-store" class="bg-red-500/20 text-red-300 px-3 py-0.5 rounded-full text-xs font-bold uppercase">Tienda</span>
+                            <span id="best-price-source" class="text-[10px] text-zinc-500"></span>
                             <span class="text-zinc-400 text-xs">Importación estimada: <strong id="best-import" class="text-zinc-200">$0.00</strong></span>
                         </div>
                         <h3 id="best-title" class="text-lg sm:text-xl font-bold text-white">Título</h3>
@@ -207,7 +214,7 @@
                             <button id="alert-btn" type="button" class="bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 font-medium px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer">
                                 <i class="fa-solid fa-bell"></i> Crear Alerta
                             </button>
-                            <a id="best-url" href="#" target="_blank" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-5 py-2 rounded-xl text-xs flex items-center gap-2">
+                            <a id="best-url" href="#" target="_blank" rel="noopener noreferrer" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-5 py-2 rounded-xl text-xs flex items-center gap-2">
                                 <span>Ver Oferta</span> <i class="fa-solid fa-external-link-alt text-[10px]"></i>
                             </a>
                         </div>
@@ -220,6 +227,7 @@
                 <h4 class="text-sm font-semibold text-zinc-300 mb-4 flex items-center gap-2">
                     <i class="fa-solid fa-chart-line text-red-500"></i> Tendencia Histórica de Precios (Últimos 6 Meses)
                 </h4>
+                <p id="price-history-unavailable" class="hidden py-8 text-center text-sm text-zinc-500">El proveedor no ofrece historial de precios para este producto.</p>
                 <div class="w-full h-64">
                     <canvas id="priceChart"></canvas>
                 </div>
@@ -864,8 +872,8 @@
 
             try {
                 const res = await fetch(`/api/search-deals?query=${encodeURIComponent(query)}&store_filter=${encodeURIComponent(store)}`, { method: 'POST' });
-                if (!res.ok) throw new Error('Error al conectar con servidor.');
                 const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'No se pudieron buscar ofertas.');
                 currentData = data;
 
                 document.getElementById('res-original').textContent = data.user_original_query;
@@ -876,45 +884,77 @@
 
                 const best = data.best_deal;
                 document.getElementById('best-store').textContent = best.store;
+                document.getElementById('best-price-source').textContent = best.is_real_price
+                    ? "Precio real de eBay"
+                    : "Precio de demostración";
                 document.getElementById('best-title').textContent = best.title;
-                document.getElementById('best-shipping').textContent = `${best.shipping_days} días hábiles`;
+                document.getElementById('best-shipping').textContent = best.shipping_days == null
+                    ? "No disponible"
+                    : `${best.shipping_days} días hábiles`;
                 document.getElementById('best-price').textContent = `$${best.price.toFixed(2)}`;
-                document.getElementById('best-import').textContent = `$${best.import_fee.toFixed(2)}`;
-                document.getElementById('best-url').href = best.url;
+                document.getElementById('best-import').textContent = best.import_fee == null
+                    ? "No disponible"
+                    : `$${best.import_fee.toFixed(2)}`;
+                document.getElementById('best-url').href = best.url || "#";
 
                 renderPriceChart(best.price_history, best.store);
 
                 const container = document.getElementById('all-options-container');
-                container.innerHTML = '';
+                container.replaceChildren();
                 data.all_options.forEach(opt => {
                     const item = document.createElement('div');
-                    item.className = "bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex items-center justify-between gap-4 hover:border-zinc-700 transition-all";
-                    item.innerHTML = `
-                        <div class="flex items-center gap-3">
-                            <span class="bg-zinc-900 text-zinc-300 px-2.5 py-1 rounded-lg text-xs font-semibold">${opt.store}</span>
-                            <div>
-                                <h5 class="text-sm font-medium text-white">${opt.title}</h5>
-                                <span class="text-xs text-zinc-500">Envío: ${opt.shipping_days} días &bull; Importación: $${opt.import_fee.toFixed(2)}</span>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-4">
-                            <span class="text-lg font-bold text-zinc-200">$${opt.price.toFixed(2)}</span>
-                            <a href="${opt.url}" target="_blank" class="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 px-3 py-1.5 rounded-lg text-xs font-medium">Ver <i class="fa-solid fa-arrow-up-right-from-square ml-1 text-[10px]"></i></a>
-                        </div>
-                    `;
+                    item.className = "bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:border-zinc-700 transition-all";
+                    const details = document.createElement('div');
+                    details.className = "min-w-0";
+                    const title = document.createElement('h5');
+                    title.className = "text-sm font-medium text-white";
+                    title.textContent = opt.title;
+                    const metadata = document.createElement('span');
+                    metadata.className = "text-xs text-zinc-500";
+                    const shipping = opt.shipping_days == null ? "Envío: No disponible" : `Envío: ${opt.shipping_days} días`;
+                    const importFee = opt.import_fee == null ? "Importación: No disponible" : `Importación: $${opt.import_fee.toFixed(2)}`;
+                    const source = opt.is_real_price ? "Precio real de eBay" : "Precio de demostración";
+                    metadata.textContent = `${source} · ${shipping} · ${importFee}`;
+                    details.append(title, metadata);
+
+                    const actions = document.createElement('div');
+                    actions.className = "flex shrink-0 items-center justify-between gap-4 sm:justify-end";
+                    const price = document.createElement('span');
+                    price.className = "text-lg font-bold text-zinc-200";
+                    price.textContent = `$${opt.price.toFixed(2)}`;
+                    const link = document.createElement('a');
+                    link.href = opt.url || "#";
+                    link.target = "_blank";
+                    link.rel = "noopener noreferrer";
+                    link.className = "bg-zinc-900 hover:bg-zinc-800 text-zinc-200 px-3 py-1.5 rounded-lg text-xs font-medium";
+                    link.textContent = "Ver oferta";
+                    actions.append(price, link);
+                    item.append(details, actions);
                     container.appendChild(item);
                 });
 
                 loading.classList.add('hidden');
                 results.classList.remove('hidden');
             } catch (err) {
-                alert('No se pudo conectar con FastAPI.');
+                alert(err.message || 'No se pudo conectar con FastAPI.');
                 loading.classList.add('hidden');
             }
         });
 
         function renderPriceChart(historyData, storeName) {
-            const ctx = document.getElementById('priceChart').getContext('2d');
+            const canvas = document.getElementById('priceChart');
+            const chartContainer = canvas.parentElement;
+            const historyUnavailable = document.getElementById('price-history-unavailable');
+            if (!historyData.length) {
+                if (priceChartInstance) priceChartInstance.destroy();
+                priceChartInstance = null;
+                chartContainer.classList.add('hidden');
+                historyUnavailable.classList.remove('hidden');
+                return;
+            }
+            chartContainer.classList.remove('hidden');
+            historyUnavailable.classList.add('hidden');
+            const ctx = canvas.getContext('2d');
             if (priceChartInstance) priceChartInstance.destroy();
 
             priceChartInstance = new Chart(ctx, {
@@ -954,35 +994,50 @@
         document.getElementById('compare-btn').addEventListener('click', () => {
             if (!currentData) return;
             const tableContainer = document.getElementById('compare-table-container');
-            let html = `
-                <table class="w-full text-left text-xs text-zinc-300 border-collapse">
-                    <thead>
-                        <tr class="border-b border-zinc-800 text-zinc-400">
-                            <th class="p-3">Tienda</th>
-                            <th class="p-3">Precio</th>
-                            <th class="p-3">Envío</th>
-                            <th class="p-3">Importación</th>
-                            <th class="p-3">Total Estimado</th>
-                            <th class="p-3">Acción</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-            currentData.all_options.forEach(opt => {
-                const total = opt.price + opt.import_fee;
-                html += `
-                    <tr class="border-b border-zinc-900 hover:bg-zinc-900/50">
-                        <td class="p-3 font-bold text-white">${opt.store}</td>
-                        <td class="p-3 text-emerald-400 font-bold">$${opt.price.toFixed(2)}</td>
-                        <td class="p-3">${opt.shipping_days} días</td>
-                        <td class="p-3">$${opt.import_fee.toFixed(2)}</td>
-                        <td class="p-3 font-black text-white">$${total.toFixed(2)}</td>
-                        <td class="p-3"><a href="${opt.url}" target="_blank" class="text-red-400 hover:underline">Ver</a></td>
-                    </tr>
-                `;
+            const table = document.createElement('table');
+            table.className = "w-full text-left text-xs text-zinc-300 border-collapse";
+            const head = table.createTHead().insertRow();
+            ["Tienda", "Fuente", "Precio", "Envío", "Importación", "Total estimado*", "Acción"].forEach(label => {
+                const cell = document.createElement('th');
+                cell.className = "p-3 border-b border-zinc-800 text-zinc-400";
+                cell.textContent = label;
+                head.appendChild(cell);
             });
-            html += `</tbody></table>`;
-            tableContainer.innerHTML = html;
+            const body = table.createTBody();
+            currentData.all_options.forEach(opt => {
+                const row = body.insertRow();
+                row.className = "border-b border-zinc-900 hover:bg-zinc-900/50";
+                const values = [
+                    opt.store,
+                    opt.is_real_price ? "eBay Browse API" : "Demostración",
+                    `$${opt.price.toFixed(2)}`,
+                    opt.shipping_days == null ? "No disponible" : `${opt.shipping_days} días`,
+                    opt.import_fee == null ? "No disponible" : `$${opt.import_fee.toFixed(2)}`,
+                    opt.import_fee == null ? "No incluye importación" : `$${(opt.price + opt.import_fee).toFixed(2)}`
+                ];
+                values.forEach((value, index) => {
+                    const cell = row.insertCell();
+                    cell.className = index === 0
+                        ? "p-3 font-bold text-white"
+                        : index === 2
+                            ? "p-3 text-emerald-400 font-bold"
+                            : "p-3";
+                    cell.textContent = value;
+                });
+                const actionCell = row.insertCell();
+                actionCell.className = "p-3";
+                const link = document.createElement('a');
+                link.href = opt.url || "#";
+                link.target = "_blank";
+                link.rel = "noopener noreferrer";
+                link.className = "text-red-400 hover:underline";
+                link.textContent = "Ver";
+                actionCell.appendChild(link);
+            });
+            const note = document.createElement('p');
+            note.className = "p-3 text-[11px] text-zinc-500";
+            note.textContent = "* El total solo incluye los cargos disponibles; el precio de eBay no incluye importación.";
+            tableContainer.replaceChildren(table, note);
             compareModal.classList.remove('hidden');
             compareModal.classList.add('flex');
         });

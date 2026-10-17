@@ -1,12 +1,16 @@
 import asyncio
+import base64
 import json
 import logging
 import urllib.parse
 import secrets
+from datetime import datetime, timezone
+from pathlib import Path
 import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
 from google import genai
@@ -37,7 +41,15 @@ Base.metadata.create_all(bind=engine)
 # Almacenamiento temporal en memoria; se pierde al reiniciar el proceso.
 verification_codes_db = {}
 
-app = FastAPI(title="AI Shopping Deal Finder - Cloud Ready")
+APP_TITLE = "Shoppy-AI | Tu Asistente de Compras Inteligente"
+APP_DESCRIPTION = (
+    "Encuentra las mejores ofertas, compara precios en tiempo real y ahorra dinero "
+    "con nuestra Inteligencia Artificial basada en eBay."
+)
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+app = FastAPI(title=APP_TITLE, description=APP_DESCRIPTION)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,6 +67,11 @@ client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 BREVO_API_KEY = (os.environ.get("BREVO_API_KEY") or "").strip()
 BREVO_EMAIL_URL = "https://api.brevo.com/v3/smtp/email"
 VERIFICATION_SENDER_EMAIL = "velaeduardo365@gmail.com"
+EBAY_CLIENT_ID = (os.environ.get("EBAY_CLIENT_ID") or "").strip()
+EBAY_CLIENT_SECRET = (os.environ.get("EBAY_CLIENT_SECRET") or "").strip()
+EBAY_MARKETPLACE_ID = os.environ.get("EBAY_MARKETPLACE_ID", "EBAY_US")
+EBAY_OAUTH_URL = "https://api.ebay.com/identity/v1/oauth2/token"
+EBAY_SEARCH_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
 
 class UserAuth(BaseModel):
     email: str
@@ -68,14 +85,18 @@ class VerifyCodeRequest(BaseModel):
 class ResendCodeRequest(BaseModel):
     email: str
 
+class ProductSearchRequest(BaseModel):
+    query: str
+
 class DealOption(BaseModel):
     store: str
     price: float
-    shipping_days: int
+    is_real_price: bool = False
+    shipping_days: Optional[int]
     url: str
     condition: str = "Nuevo"
     title: str
-    import_fee: float
+    import_fee: Optional[float]
     price_history: List[float]
 
 class DealResponse(BaseModel):
@@ -100,6 +121,135 @@ class AlertRequest(BaseModel):
 class AlertResponse(BaseModel):
     status: str
     message: str
+
+def get_ebay_token() -> str:
+    if not EBAY_CLIENT_ID or not EBAY_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="La integración con eBay no está configurada. Define EBAY_CLIENT_ID y EBAY_CLIENT_SECRET.",
+        )
+
+    credentials = base64.b64encode(
+        f"{EBAY_CLIENT_ID}:{EBAY_CLIENT_SECRET}".encode("utf-8")
+    ).decode("ascii")
+
+    try:
+        response = requests.post(
+            EBAY_OAUTH_URL,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": f"Basic {credentials}",
+            },
+            data={
+                "grant_type": "client_credentials",
+                "scope": "https://api.ebay.com/oauth/api_scope",
+            },
+            timeout=15,
+        )
+    except requests.RequestException as error:
+        logger.warning("Could not reach eBay OAuth API: %s", error)
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo conectar con la autenticación de eBay.",
+        ) from None
+
+    if response.status_code != 200:
+        logger.error("eBay OAuth rejected credentials with HTTP %s", response.status_code)
+        raise HTTPException(
+            status_code=502,
+            detail="eBay rechazó las credenciales de API. Revisa EBAY_CLIENT_ID y EBAY_CLIENT_SECRET.",
+        )
+
+    try:
+        access_token = response.json().get("access_token")
+    except ValueError:
+        logger.error("eBay OAuth returned invalid JSON")
+        raise HTTPException(status_code=502, detail="eBay devolvió una respuesta de autenticación inválida.") from None
+    except AttributeError:
+        logger.error("eBay OAuth returned an unexpected JSON structure")
+        raise HTTPException(status_code=502, detail="eBay devolvió una respuesta de autenticación inválida.") from None
+    if not access_token:
+        logger.error("eBay OAuth response did not contain an access token")
+        raise HTTPException(status_code=502, detail="eBay no devolvió un token de acceso válido.")
+    return access_token
+
+def search_ebay_items(query: str, limit: int = 3) -> list[dict]:
+    token = get_ebay_token()
+    try:
+        response = requests.get(
+            EBAY_SEARCH_URL,
+            params={"q": query, "limit": limit},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "X-EBAY-C-MARKETPLACE-ID": EBAY_MARKETPLACE_ID,
+            },
+            timeout=20,
+        )
+    except requests.RequestException as error:
+        logger.warning("Could not reach eBay Browse API: %s", error)
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo conectar con la búsqueda de eBay.",
+        ) from None
+
+    if response.status_code != 200:
+        logger.error("eBay Browse API returned HTTP %s", response.status_code)
+        if response.status_code in (401, 403):
+            detail = "eBay rechazó el acceso a Browse API. Revisa las credenciales y permisos de la aplicación."
+        else:
+            detail = f"La búsqueda de eBay falló (HTTP {response.status_code})."
+        raise HTTPException(status_code=502, detail=detail)
+
+    try:
+        items = response.json().get("itemSummaries", [])
+    except ValueError:
+        logger.error("eBay Browse API returned invalid JSON")
+        raise HTTPException(status_code=502, detail="eBay devolvió resultados con formato inválido.") from None
+    except AttributeError:
+        logger.error("eBay Browse API returned an unexpected JSON structure")
+        raise HTTPException(status_code=502, detail="eBay devolvió resultados con formato inválido.") from None
+    if not isinstance(items, list):
+        logger.error("eBay Browse API returned an invalid itemSummaries value")
+        raise HTTPException(status_code=502, detail="eBay devolvió resultados con formato inválido.")
+    return items
+
+def ebay_items_to_deals(items: list[dict]) -> list[DealOption]:
+    deals = []
+    for item in items:
+        item_price = item.get("price") or {}
+        if item_price.get("currency") != "USD":
+            continue
+        try:
+            price = float(item_price["value"])
+        except (KeyError, TypeError, ValueError):
+            continue
+
+        shipping_days = None
+        shipping_options = item.get("shippingOptions") or []
+        if shipping_options:
+            delivery_date = shipping_options[0].get("maxEstimatedDeliveryDate")
+            if delivery_date:
+                try:
+                    delivery = datetime.fromisoformat(delivery_date.replace("Z", "+00:00"))
+                    shipping_days = max(
+                        0,
+                        (delivery.date() - datetime.now(timezone.utc).date()).days,
+                    )
+                except ValueError:
+                    logger.warning("eBay returned an invalid estimated delivery date")
+
+        deals.append(DealOption(
+            store="eBay",
+            price=price,
+            is_real_price=True,
+            shipping_days=shipping_days,
+            url=item.get("itemWebUrl") or "",
+            condition=item.get("condition") or "Condición no especificada",
+            title=item.get("title") or "Producto de eBay",
+            import_fee=None,
+            price_history=[],
+        ))
+    return deals
 
 def send_http_email_code(to_email: str, code: str) -> None:
     if not BREVO_API_KEY:
@@ -169,9 +319,7 @@ async def deliver_verification_code(email: str, code: str) -> None:
 
 @app.get("/")
 async def serve_frontend():
-    if os.path.exists("index.html"):
-        return FileResponse("index.html")
-    return {"message": "API Activa. Coloca tu index.html en el directorio raíz."}
+    return FileResponse(STATIC_DIR / "index.html", media_type="text/html")
 
 @app.post("/api/register")
 async def register_user(
@@ -341,6 +489,33 @@ def analyze_query_with_gemini(raw_query: str) -> dict:
         print(f"Error con Gemini: {e}")
         return {"optimized_query": raw_query, "max_price": None, "condition": "Nuevo"}
 
+@app.post("/api/search-ebay")
+async def search_ebay(data: ProductSearchRequest):
+    query = data.query.strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="Escribe un producto para buscar en eBay.")
+
+    items = await asyncio.to_thread(search_ebay_items, query, 3)
+    deals_by_url = {
+        item.url: item
+        for item in ebay_items_to_deals(items)
+    }
+    return {
+        "success": True,
+        "results": [
+            {
+                "titulo": deal.title,
+                "precio": deal.price,
+                "moneda": "USD",
+                "condicion": deal.condition,
+                "link": deal.url,
+                "imagen": (raw_item.get("image") or {}).get("imageUrl"),
+            }
+            for raw_item in items
+            if (deal := deals_by_url.get(raw_item.get("itemWebUrl") or ""))
+        ],
+    }
+
 @app.post("/api/search-deals", response_model=DealResponse)
 async def search_deals(query: str, store_filter: str = "Todas"):
     parsed = analyze_query_with_gemini(query)
@@ -363,16 +538,6 @@ async def search_deals(query: str, store_filter: str = "Todas"):
             price_history=[round(base_p * 1.25, 2), round(base_p * 1.15, 2), round(base_p * 1.2, 2), round(base_p * 1.1, 2), round(base_p * 1.05, 2), round(base_p, 2)]
         ),
         DealOption(
-            store="eBay", 
-            price=round(base_p * 0.88, 2), 
-            shipping_days=4, 
-            url=f"https://www.ebay.com/sch/i.html?_nkw={encoded_q}", 
-            condition=condition,
-            title=f"eBay Verified Seller: {opt_query}",
-            import_fee=round(base_p * 0.10, 2),
-            price_history=[round(base_p * 1.1, 2), round(base_p * 1.05, 2), round(base_p * 0.98, 2), round(base_p * 0.95, 2), round(base_p * 0.9, 2), round(base_p * 0.88, 2)]
-        ),
-        DealOption(
             store="Walmart", 
             price=round(base_p * 1.08, 2), 
             shipping_days=3, 
@@ -383,21 +548,31 @@ async def search_deals(query: str, store_filter: str = "Todas"):
             price_history=[round(base_p * 1.3, 2), round(base_p * 1.25, 2), round(base_p * 1.2, 2), round(base_p * 1.15, 2), round(base_p * 1.1, 2), round(base_p * 1.08, 2)]
         ),
     ]
+
+    normalized_store_filter = store_filter.strip().lower()
+    include_ebay = normalized_store_filter in ("todas", "ebay")
+    if include_ebay and (EBAY_CLIENT_ID and EBAY_CLIENT_SECRET or normalized_store_filter == "ebay"):
+        ebay_items = await asyncio.to_thread(search_ebay_items, opt_query, 3)
+        all_deals.extend(ebay_items_to_deals(ebay_items))
     
-    if store_filter and store_filter != "Todas":
-        filtered = [d for d in all_deals if d.store.lower() == store_filter.lower()]
-        if filtered:
-            all_deals = filtered
+    if normalized_store_filter and normalized_store_filter != "todas":
+        all_deals = [d for d in all_deals if d.store.lower() == normalized_store_filter]
 
     if max_price:
         all_deals = [d for d in all_deals if d.price <= max_price]
+
+    if not all_deals:
+        raise HTTPException(
+            status_code=404,
+            detail="No se encontraron ofertas que coincidan con los filtros.",
+        )
 
     prices = [d.price for d in all_deals]
     avg_price = sum(prices) / len(prices)
     sorted_deals = sorted(all_deals, key=lambda x: x.price)
     best_deal = sorted_deals[0]
     
-    ref_price = max(prices) if len(prices) > 1 else best_deal.price * 1.2
+    ref_price = max(prices) if len(prices) > 1 else best_deal.price
     money_saved = round(ref_price - best_deal.price, 2)
     percentage_saved = round((money_saved / ref_price) * 100, 1) if ref_price > 0 else 0.0
 

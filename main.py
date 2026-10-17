@@ -103,7 +103,7 @@ class ProductSearchRequest(BaseModel):
     query: str
 
 class WebAnalysisRequest(BaseModel):
-    user_email: str = Field(min_length=3, max_length=254)
+    user_email: Optional[str] = Field(default=None, min_length=3, max_length=254)
     user_query: str = Field(max_length=500)
     web_results: List[dict[str, Any]] = Field(max_length=10)
 
@@ -679,8 +679,8 @@ async def analyze_web_products(data: WebAnalysisRequest):
     if not user_query:
         raise HTTPException(status_code=400, detail="Escribe qué producto quieres analizar.")
 
-    user_email = data.user_email.strip().lower()
-    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", user_email):
+    user_email = data.user_email.strip().lower() if data.user_email else None
+    if user_email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", user_email):
         raise HTTPException(status_code=422, detail="El correo electrónico no es válido.")
 
     normalized_results = []
@@ -705,7 +705,7 @@ async def analyze_web_products(data: WebAnalysisRequest):
         )
 
     history_saved = False
-    if searches_collection is not None:
+    if searches_collection is not None and user_email:
         try:
             await asyncio.to_thread(
                 searches_collection.insert_one,
@@ -722,7 +722,7 @@ async def analyze_web_products(data: WebAnalysisRequest):
                 status_code=503,
                 detail="No se pudo guardar el historial de búsqueda. Inténtalo de nuevo más tarde.",
             ) from exc
-    else:
+    elif searches_collection is None:
         logger.warning("Search history was not saved because MongoDB is not configured")
 
     prompt = f"""

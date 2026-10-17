@@ -367,6 +367,15 @@
                 <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Opciones encontradas</h4>
                 <div id="all-options-container" class="products-grid"></div>
             </div>
+
+            <section id="web-analysis" class="rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-950/30 via-zinc-950 to-zinc-950 p-5 sm:p-6" aria-labelledby="web-analysis-title" aria-live="polite">
+                <h4 id="web-analysis-title" class="mb-3 flex items-center gap-2 text-sm font-semibold text-indigo-200">
+                    <i class="fa-solid fa-wand-magic-sparkles text-indigo-400" aria-hidden="true"></i>
+                    Análisis de ofertas con IA
+                </h4>
+                <p id="web-analysis-status" class="text-sm text-zinc-400">El análisis aparecerá aquí.</p>
+                <pre id="web-analysis-result" class="hidden whitespace-pre-wrap break-words font-sans text-sm leading-7 text-zinc-200"></pre>
+            </section>
         </div>
     </main>
 
@@ -956,6 +965,8 @@
         const searchDropdown = document.getElementById('search-dropdown');
         const searchOptionsList = document.getElementById('search-options-list');
         const clearHistoryBtn = document.getElementById('clear-history');
+        const webAnalysisStatus = document.getElementById('web-analysis-status');
+        const webAnalysisResult = document.getElementById('web-analysis-result');
 
         let currentData = null;
         let priceChartInstance = null;
@@ -998,6 +1009,10 @@
             searchDropdown.classList.add('hidden');
             loading.classList.remove('hidden');
             results.classList.add('hidden');
+            webAnalysisResult.classList.add('hidden');
+            webAnalysisResult.textContent = "";
+            webAnalysisStatus.textContent = "Buscando productos para el análisis...";
+            webAnalysisStatus.classList.remove('hidden');
 
             try {
                 const res = await fetch(`/api/search-deals?query=${encodeURIComponent(query)}&store_filter=${encodeURIComponent(store)}`, { method: 'POST' });
@@ -1064,8 +1079,8 @@
                     title.className = "product-card-title";
                     title.textContent = opt.title;
                     const store = document.createElement('span');
-                    store.className = "product-card-store";
-                    store.textContent = opt.store || "Tienda no especificada";
+                    store.className = "product-card-store store-label";
+                    store.textContent = opt.store || "Tienda Web";
                     store.title = source;
                     const meta = document.createElement('span');
                     meta.className = "product-card-meta";
@@ -1086,6 +1101,42 @@
                     item.append(badge, imageWrap, title, store, meta, price, link);
                     container.appendChild(item);
                 });
+
+                try {
+                    const webResponse = await fetch('/api/search-web', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ query })
+                    });
+                    const webData = await webResponse.json();
+                    if (!webResponse.ok) {
+                        throw new Error(webData.detail || "No se pudieron obtener resultados de la web.");
+                    }
+                    if (!Array.isArray(webData.results) || webData.results.length === 0) {
+                        throw new Error("La búsqueda web no devolvió productos para analizar.");
+                    }
+
+                    const analysisResponse = await fetch('/api/analyze-web', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            user_email: currentUser?.email || null,
+                            user_query: query,
+                            web_results: webData.results
+                        })
+                    });
+                    const analysisData = await analysisResponse.json();
+                    if (!analysisResponse.ok) {
+                        throw new Error(analysisData.detail || "No se pudo analizar la búsqueda web.");
+                    }
+
+                    webAnalysisResult.textContent = analysisData.analysis_result;
+                    webAnalysisResult.classList.remove('hidden');
+                    webAnalysisStatus.classList.add('hidden');
+                } catch (analysisError) {
+                    webAnalysisStatus.textContent = analysisError.message || "No se pudo completar el análisis con IA.";
+                    webAnalysisStatus.classList.remove('hidden');
+                }
 
                 loading.classList.add('hidden');
                 results.classList.remove('hidden');

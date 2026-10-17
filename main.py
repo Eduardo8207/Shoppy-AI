@@ -768,6 +768,42 @@ sea posible.
         "history_saved": history_saved,
     }
 
+@app.get("/api/historial/{email}")
+async def obtener_historial(email: str):
+    normalized_email = email.strip().lower()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized_email):
+        raise HTTPException(status_code=422, detail="El correo electrónico no es válido.")
+    if searches_collection is None:
+        raise HTTPException(status_code=503, detail="Base de datos no conectada.")
+
+    try:
+        results = await asyncio.to_thread(
+            lambda: list(
+                searches_collection.find(
+                    {"email": normalized_email},
+                    {"_id": 0, "query": 1, "fecha": 1},
+                )
+                .sort("fecha", -1)
+                .limit(10)
+            )
+        )
+    except PyMongoError as exc:
+        logger.exception("MongoDB failed to load search history")
+        raise HTTPException(
+            status_code=503,
+            detail="Error al cargar el historial.",
+        ) from exc
+
+    history = [
+        {
+            "query": item["query"],
+            "fecha": item["fecha"].isoformat() if item.get("fecha") else None,
+        }
+        for item in results
+        if isinstance(item.get("query"), str)
+    ]
+    return {"success": True, "historial": history}
+
 @app.post("/api/search-deals", response_model=DealResponse)
 async def search_deals(query: str, store_filter: str = "Todas"):
     parsed = analyze_query_with_gemini(query)

@@ -4,3 +4,4 @@ sqlalchemy
 google-genai
 pydantic
 requests
+pymongo

@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+import re
 import urllib.parse
 import secrets
 from datetime import datetime, timezone
@@ -72,6 +73,8 @@ EBAY_CLIENT_SECRET = (os.environ.get("EBAY_CLIENT_SECRET") or "").strip()
 EBAY_MARKETPLACE_ID = os.environ.get("EBAY_MARKETPLACE_ID", "EBAY_US")
 EBAY_OAUTH_URL = "https://api.ebay.com/identity/v1/oauth2/token"
 EBAY_SEARCH_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
+SERPAPI_KEY = (os.environ.get("SERPAPI_KEY") or "").strip()
+SERPAPI_SEARCH_URL = "https://serpapi.com/search.json"
 
 class UserAuth(BaseModel):
     email: str
@@ -92,6 +95,8 @@ class DealOption(BaseModel):
     store: str
     price: float
     is_real_price: bool = False
+    price_source: str = "Demostración"
+    image_url: Optional[str] = None
     shipping_days: Optional[int]
     url: str
     condition: str = "Nuevo"
@@ -242,6 +247,8 @@ def ebay_items_to_deals(items: list[dict]) -> list[DealOption]:
             store="eBay",
             price=price,
             is_real_price=True,
+            price_source="eBay Browse API",
+            image_url=(item.get("image") or {}).get("imageUrl"),
             shipping_days=shipping_days,
             url=item.get("itemWebUrl") or "",
             condition=item.get("condition") or "Condición no especificada",
@@ -250,6 +257,113 @@ def ebay_items_to_deals(items: list[dict]) -> list[DealOption]:
             price_history=[],
         ))
     return deals
+
+def parse_shopping_price(item: dict) -> Optional[float]:
+    extracted_price = item.get("extracted_price")
+    try:
+        if extracted_price is not None:
+            price = float(extracted_price)
+        else:
+            price_text = item.get("price")
+            if not isinstance(price_text, str):
+                return None
+            numeric_text = re.sub(r"[^\d.,]", "", price_text)
+            if not numeric_text:
+                return None
+            if "," in numeric_text and "." not in numeric_text:
+                decimal_part = numeric_text.rsplit(",", 1)[-1]
+                numeric_text = numeric_text.replace(",", ".") if len(decimal_part) == 2 else numeric_text.replace(",", "")
+            else:
+                numeric_text = numeric_text.replace(",", "")
+            price = float(numeric_text)
+    except (TypeError, ValueError):
+        return None
+    return price if price > 0 else None
+
+def search_serpapi_items(query: str, limit: int = 5) -> list[dict]:
+    if not SERPAPI_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="La búsqueda web no está configurada. Define SERPAPI_KEY en las variables de entorno.",
+        )
+
+    try:
+        response = requests.get(
+            SERPAPI_SEARCH_URL,
+            params={
+                "engine": "google_shopping",
+                "q": query,
+                "hl": "es",
+                "gl": "us",
+                "api_key": SERPAPI_KEY,
+            },
+            timeout=20,
+        )
+    except requests.RequestException as error:
+        logger.warning("Could not reach SerpApi (%s)", type(error).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo conectar con el buscador web. Intenta nuevamente.",
+        ) from None
+
+    if response.status_code != 200:
+        logger.error("SerpApi rejected search with HTTP %s", response.status_code)
+        if response.status_code in (401, 403):
+            detail = "SerpApi rechazó la clave. Verifica que SERPAPI_KEY sea válida y esté activa."
+        elif response.status_code == 429:
+            detail = "Se alcanzó el límite de búsquedas de SerpApi. Intenta más tarde."
+        else:
+            detail = f"La búsqueda web falló (HTTP {response.status_code})."
+        raise HTTPException(status_code=502, detail=detail)
+
+    try:
+        result = response.json()
+    except ValueError:
+        logger.error("SerpApi returned invalid JSON")
+        raise HTTPException(status_code=502, detail="El buscador devolvió una respuesta inválida.") from None
+    if not isinstance(result, dict):
+        logger.error("SerpApi returned an unexpected response structure")
+        raise HTTPException(status_code=502, detail="El buscador devolvió una respuesta inválida.")
+    if result.get("error"):
+        logger.error("SerpApi reported a search error")
+        raise HTTPException(status_code=502, detail="SerpApi no pudo completar la búsqueda.")
+
+    shopping_results = result.get("shopping_results", [])
+    if not isinstance(shopping_results, list):
+        logger.error("SerpApi returned invalid shopping_results")
+        raise HTTPException(status_code=502, detail="El buscador devolvió resultados inválidos.")
+    return shopping_results[:limit]
+
+def serpapi_items_to_deals(items: list[dict]) -> list[DealOption]:
+    deals = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        price = parse_shopping_price(item)
+        source = item.get("source")
+        title = item.get("title")
+        link = item.get("link")
+        if price is None or not isinstance(source, str) or not source.strip() or not isinstance(title, str) or not isinstance(link, str):
+            continue
+        deals.append(DealOption(
+            store=source.strip(),
+            price=price,
+            is_real_price=True,
+            price_source="Google Shopping vía SerpApi",
+            image_url=item.get("thumbnail") if isinstance(item.get("thumbnail"), str) else None,
+            shipping_days=None,
+            url=link,
+            condition="Nuevo",
+            title=title,
+            import_fee=None,
+            price_history=[],
+        ))
+    return deals
+
+def deal_matches_store(deal: DealOption, store_filter: str) -> bool:
+    normalized_store = re.sub(r"[^a-z0-9]", "", deal.store.lower())
+    normalized_filter = re.sub(r"[^a-z0-9]", "", store_filter.lower())
+    return normalized_store == normalized_filter or normalized_store.startswith(normalized_filter)
 
 def send_http_email_code(to_email: str, code: str) -> None:
     if not BREVO_API_KEY:
@@ -516,6 +630,27 @@ async def search_ebay(data: ProductSearchRequest):
         ],
     }
 
+@app.post("/api/search-web")
+async def search_entire_web(data: ProductSearchRequest):
+    query = data.query.strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="Escribe un producto para buscar en la web.")
+
+    items = await asyncio.to_thread(search_serpapi_items, query, 5)
+    return {
+        "success": True,
+        "results": [
+            {
+                "titulo": deal.title,
+                "precio": deal.price,
+                "tienda": deal.store,
+                "link": deal.url,
+                "imagen": deal.image_url,
+            }
+            for deal in serpapi_items_to_deals(items)
+        ],
+    }
+
 @app.post("/api/search-deals", response_model=DealResponse)
 async def search_deals(query: str, store_filter: str = "Todas"):
     parsed = analyze_query_with_gemini(query)
@@ -523,40 +658,55 @@ async def search_deals(query: str, store_filter: str = "Todas"):
     max_price = parsed.get("max_price")
     condition = parsed.get("condition", "Nuevo")
     
-    encoded_q = urllib.parse.quote(opt_query)
-    base_p = 45.0 if not max_price else max_price * 0.95
-    
-    all_deals = [
-        DealOption(
-            store="Amazon", 
-            price=round(base_p, 2), 
-            shipping_days=2, 
-            url=f"https://www.amazon.com/s?k={encoded_q}", 
-            condition=condition,
-            title=f"Amazon Global: {opt_query}",
-            import_fee=round(base_p * 0.12, 2),
-            price_history=[round(base_p * 1.25, 2), round(base_p * 1.15, 2), round(base_p * 1.2, 2), round(base_p * 1.1, 2), round(base_p * 1.05, 2), round(base_p, 2)]
-        ),
-        DealOption(
-            store="Walmart", 
-            price=round(base_p * 1.08, 2), 
-            shipping_days=3, 
-            url=f"https://www.walmart.com/search?q={encoded_q}", 
-            condition=condition,
-            title=f"Walmart Store Deal: {opt_query}",
-            import_fee=round(base_p * 0.14, 2),
-            price_history=[round(base_p * 1.3, 2), round(base_p * 1.25, 2), round(base_p * 1.2, 2), round(base_p * 1.15, 2), round(base_p * 1.1, 2), round(base_p * 1.08, 2)]
-        ),
-    ]
-
     normalized_store_filter = store_filter.strip().lower()
+    all_deals = []
+
+    if SERPAPI_KEY:
+        shopping_items = await asyncio.to_thread(search_serpapi_items, opt_query, 10)
+        all_deals.extend(serpapi_items_to_deals(shopping_items))
+
     include_ebay = normalized_store_filter in ("todas", "ebay")
     if include_ebay and (EBAY_CLIENT_ID and EBAY_CLIENT_SECRET or normalized_store_filter == "ebay"):
         ebay_items = await asyncio.to_thread(search_ebay_items, opt_query, 3)
         all_deals.extend(ebay_items_to_deals(ebay_items))
-    
+
+    if not SERPAPI_KEY and not (EBAY_CLIENT_ID and EBAY_CLIENT_SECRET) and normalized_store_filter in ("todas", "amazon", "walmart"):
+        encoded_q = urllib.parse.quote(opt_query)
+        base_p = 45.0 if not max_price else max_price * 0.95
+        demo_deals = [
+            DealOption(
+                store="Amazon",
+                price=round(base_p, 2),
+                shipping_days=2,
+                url=f"https://www.amazon.com/s?k={encoded_q}",
+                condition=condition,
+                title=f"Amazon Global: {opt_query}",
+                import_fee=round(base_p * 0.12, 2),
+                price_history=[round(base_p * 1.25, 2), round(base_p * 1.15, 2), round(base_p * 1.2, 2), round(base_p * 1.1, 2), round(base_p * 1.05, 2), round(base_p, 2)],
+            ),
+            DealOption(
+                store="Walmart",
+                price=round(base_p * 1.08, 2),
+                shipping_days=3,
+                url=f"https://www.walmart.com/search?q={encoded_q}",
+                condition=condition,
+                title=f"Walmart Store Deal: {opt_query}",
+                import_fee=round(base_p * 0.14, 2),
+                price_history=[round(base_p * 1.3, 2), round(base_p * 1.25, 2), round(base_p * 1.2, 2), round(base_p * 1.15, 2), round(base_p * 1.1, 2), round(base_p * 1.08, 2)],
+            ),
+        ]
+        all_deals.extend(demo_deals)
+
     if normalized_store_filter and normalized_store_filter != "todas":
-        all_deals = [d for d in all_deals if d.store.lower() == normalized_store_filter]
+        all_deals = [d for d in all_deals if deal_matches_store(d, normalized_store_filter)]
+
+    unique_deals = []
+    seen_urls = set()
+    for deal in all_deals:
+        if deal.url not in seen_urls:
+            seen_urls.add(deal.url)
+            unique_deals.append(deal)
+    all_deals = unique_deals
 
     if max_price:
         all_deals = [d for d in all_deals if d.price <= max_price]
@@ -567,13 +717,14 @@ async def search_deals(query: str, store_filter: str = "Todas"):
             detail="No se encontraron ofertas que coincidan con los filtros.",
         )
 
-    prices = [d.price for d in all_deals]
+    real_prices = [d.price for d in all_deals if d.is_real_price]
+    prices = real_prices or [d.price for d in all_deals]
     avg_price = sum(prices) / len(prices)
     sorted_deals = sorted(all_deals, key=lambda x: x.price)
     best_deal = sorted_deals[0]
     
     ref_price = max(prices) if len(prices) > 1 else best_deal.price
-    money_saved = round(ref_price - best_deal.price, 2)
+    money_saved = round(ref_price - best_deal.price, 2) if len(prices) > 1 else 0
     percentage_saved = round((money_saved / ref_price) * 100, 1) if ref_price > 0 else 0.0
 
     return DealResponse(

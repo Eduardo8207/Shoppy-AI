@@ -884,9 +884,8 @@
 
                 const best = data.best_deal;
                 document.getElementById('best-store').textContent = best.store;
-                document.getElementById('best-price-source').textContent = best.is_real_price
-                    ? "Precio real de eBay"
-                    : "Precio de demostración";
+                document.getElementById('best-price-source').textContent = best.price_source
+                    || (best.is_real_price ? "Precio real" : "Precio de demostración");
                 document.getElementById('best-title').textContent = best.title;
                 document.getElementById('best-shipping').textContent = best.shipping_days == null
                     ? "No disponible"
@@ -904,6 +903,22 @@
                 data.all_options.forEach(opt => {
                     const item = document.createElement('div');
                     item.className = "bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:border-zinc-700 transition-all";
+                    if (opt.image_url) {
+                        try {
+                            const imageUrl = new URL(opt.image_url);
+                            if (imageUrl.protocol === "https:") {
+                                const image = document.createElement('img');
+                                image.src = imageUrl.href;
+                                image.alt = opt.title;
+                                image.loading = "lazy";
+                                image.referrerPolicy = "no-referrer";
+                                image.className = "h-20 w-20 shrink-0 rounded-lg bg-zinc-900 object-contain";
+                                item.appendChild(image);
+                            }
+                        } catch {
+                            // Ignore malformed image URLs returned by shopping providers.
+                        }
+                    }
                     const details = document.createElement('div');
                     details.className = "min-w-0";
                     const title = document.createElement('h5');
@@ -913,7 +928,7 @@
                     metadata.className = "text-xs text-zinc-500";
                     const shipping = opt.shipping_days == null ? "Envío: No disponible" : `Envío: ${opt.shipping_days} días`;
                     const importFee = opt.import_fee == null ? "Importación: No disponible" : `Importación: $${opt.import_fee.toFixed(2)}`;
-                    const source = opt.is_real_price ? "Precio real de eBay" : "Precio de demostración";
+                    const source = opt.price_source || (opt.is_real_price ? "Precio real" : "Precio de demostración");
                     metadata.textContent = `${source} · ${shipping} · ${importFee}`;
                     details.append(title, metadata);
 
@@ -1009,7 +1024,7 @@
                 row.className = "border-b border-zinc-900 hover:bg-zinc-900/50";
                 const values = [
                     opt.store,
-                    opt.is_real_price ? "eBay Browse API" : "Demostración",
+                    opt.price_source || (opt.is_real_price ? "Precio real" : "Demostración"),
                     `$${opt.price.toFixed(2)}`,
                     opt.shipping_days == null ? "No disponible" : `${opt.shipping_days} días`,
                     opt.import_fee == null ? "No disponible" : `$${opt.import_fee.toFixed(2)}`,

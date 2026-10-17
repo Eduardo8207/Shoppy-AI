@@ -29,6 +29,135 @@
                 margin-left: 3rem;
             }
         }
+        .products-grid {
+            display: flex;
+            gap: 15px;
+            overflow-x: auto;
+            padding: 10px 2px 16px;
+            scroll-snap-type: x mandatory;
+            scrollbar-color: #3f3f46 #18181b;
+            scrollbar-width: thin;
+        }
+        .product-card {
+            flex: 0 0 220px;
+            min-width: 200px;
+            min-height: 310px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 16px;
+            border: 1px solid #27272a;
+            border-radius: 16px;
+            background:
+                radial-gradient(ellipse at top, rgba(79, 70, 229, 0.13), transparent 55%),
+                linear-gradient(160deg, #1e1e2f, #18181b 72%);
+            color: #fff;
+            text-align: center;
+            scroll-snap-align: start;
+            transition: border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+        }
+        .product-card:hover {
+            transform: translateY(-3px);
+            border-color: #52525b;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3);
+        }
+        .product-image-wrap {
+            position: relative;
+            display: grid;
+            place-items: center;
+            width: 120px;
+            height: 120px;
+            flex: 0 0 120px;
+            margin-bottom: 14px;
+            overflow: hidden;
+            border-radius: 12px;
+            border: 1px solid #27272a;
+            background: radial-gradient(circle, #27272a, #09090b 75%);
+        }
+        .product-img {
+            width: 120px;
+            height: 120px;
+            object-fit: contain;
+            transition: transform 200ms ease;
+        }
+        .product-card:hover .product-img {
+            transform: scale(1.06);
+        }
+        .product-image-placeholder {
+            color: #71717a;
+            font-size: 2rem;
+        }
+        .product-card-badge {
+            align-self: flex-start;
+            max-width: 100%;
+            margin-bottom: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(52, 211, 153, 0.25);
+            border-radius: 999px;
+            background: rgba(16, 185, 129, 0.1);
+            padding: 3px 8px;
+            color: #6ee7b7;
+            font-size: 0.625rem;
+            font-weight: 700;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .product-card-title {
+            display: -webkit-box;
+            min-height: 2.5rem;
+            overflow: hidden;
+            color: #f4f4f5;
+            font-size: 0.875rem;
+            font-weight: 600;
+            line-height: 1.25rem;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+        }
+        .product-card-store {
+            max-width: 100%;
+            margin-top: 6px;
+            overflow: hidden;
+            color: #a1a1aa;
+            font-size: 0.7rem;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .product-card-meta {
+            min-height: 1rem;
+            margin-top: 5px;
+            color: #71717a;
+            font-size: 0.65rem;
+        }
+        .product-price {
+            margin: 10px 0 12px;
+            color: #34d399;
+            font-size: 1.5rem;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+        .buy-btn {
+            margin-top: auto;
+            border-radius: 999px;
+            background: #4f46e5;
+            padding: 9px 16px;
+            color: #fff;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-decoration: none;
+            transition: background-color 180ms ease;
+        }
+        .buy-btn:hover {
+            background: #4338ca;
+        }
+        .buy-btn:focus-visible {
+            outline: 2px solid #a5b4fc;
+            outline-offset: 3px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .product-card, .product-img, .buy-btn {
+                transition: none;
+            }
+        }
     </style>
 </head>
 <body class="min-h-screen bg-zinc-950 text-slate-100">
@@ -236,7 +365,7 @@
             <!-- All Options List -->
             <div class="space-y-3 pt-2">
                 <h4 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Opciones encontradas</h4>
-                <div id="all-options-container" class="space-y-2"></div>
+                <div id="all-options-container" class="products-grid"></div>
             </div>
         </div>
     </main>
@@ -901,8 +1030,18 @@
                 const container = document.getElementById('all-options-container');
                 container.replaceChildren();
                 data.all_options.forEach(opt => {
-                    const item = document.createElement('div');
-                    item.className = "bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:border-zinc-700 transition-all";
+                    const item = document.createElement('article');
+                    item.className = "product-card";
+                    const source = opt.price_source || (opt.is_real_price ? "Precio real" : "Precio de demostración");
+                    const badge = document.createElement('span');
+                    badge.className = "product-card-badge";
+                    badge.textContent = opt.is_real_price ? "Precio real" : "Precio de referencia";
+                    const imageWrap = document.createElement('div');
+                    imageWrap.className = "product-image-wrap";
+                    const placeholder = document.createElement('i');
+                    placeholder.className = "product-image-placeholder fa-solid fa-bag-shopping";
+                    placeholder.setAttribute('aria-hidden', 'true');
+                    imageWrap.appendChild(placeholder);
                     if (opt.image_url) {
                         try {
                             const imageUrl = new URL(opt.image_url);
@@ -912,39 +1051,39 @@
                                 image.alt = opt.title;
                                 image.loading = "lazy";
                                 image.referrerPolicy = "no-referrer";
-                                image.className = "h-20 w-20 shrink-0 rounded-lg bg-zinc-900 object-contain";
-                                item.appendChild(image);
+                                image.className = "product-img";
+                                image.addEventListener('load', () => placeholder.remove(), { once: true });
+                                image.addEventListener('error', () => image.remove(), { once: true });
+                                imageWrap.appendChild(image);
                             }
                         } catch {
                             // Ignore malformed image URLs returned by shopping providers.
                         }
                     }
-                    const details = document.createElement('div');
-                    details.className = "min-w-0";
                     const title = document.createElement('h5');
-                    title.className = "text-sm font-medium text-white";
+                    title.className = "product-card-title";
                     title.textContent = opt.title;
-                    const metadata = document.createElement('span');
-                    metadata.className = "text-xs text-zinc-500";
-                    const shipping = opt.shipping_days == null ? "Envío: No disponible" : `Envío: ${opt.shipping_days} días`;
-                    const importFee = opt.import_fee == null ? "Importación: No disponible" : `Importación: $${opt.import_fee.toFixed(2)}`;
-                    const source = opt.price_source || (opt.is_real_price ? "Precio real" : "Precio de demostración");
-                    metadata.textContent = `${source} · ${shipping} · ${importFee}`;
-                    details.append(title, metadata);
-
-                    const actions = document.createElement('div');
-                    actions.className = "flex shrink-0 items-center justify-between gap-4 sm:justify-end";
+                    const store = document.createElement('span');
+                    store.className = "product-card-store";
+                    store.textContent = opt.store || "Tienda no especificada";
+                    store.title = source;
+                    const meta = document.createElement('span');
+                    meta.className = "product-card-meta";
+                    const condition = opt.condition || "Condición no disponible";
+                    const shipping = opt.shipping_days == null
+                        ? "Envío no disponible"
+                        : `${opt.shipping_days} días de envío`;
+                    meta.textContent = `${condition} · ${shipping}`;
                     const price = document.createElement('span');
-                    price.className = "text-lg font-bold text-zinc-200";
+                    price.className = "product-price";
                     price.textContent = `$${opt.price.toFixed(2)}`;
                     const link = document.createElement('a');
                     link.href = opt.url || "#";
                     link.target = "_blank";
                     link.rel = "noopener noreferrer";
-                    link.className = "bg-zinc-900 hover:bg-zinc-800 text-zinc-200 px-3 py-1.5 rounded-lg text-xs font-medium";
+                    link.className = "buy-btn";
                     link.textContent = "Ver oferta";
-                    actions.append(price, link);
-                    item.append(details, actions);
+                    item.append(badge, imageWrap, title, store, meta, price, link);
                     container.appendChild(item);
                 });
 

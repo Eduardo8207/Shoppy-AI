@@ -16,7 +16,11 @@ from pydantic import BaseModel, Field
 from typing import Any, List, Optional
 from google import genai
 import os
-import bcrypt
+import hashlib
+try:
+    import bcrypt
+except ImportError:
+    bcrypt = None
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
@@ -24,23 +28,28 @@ logger = logging.getLogger(__name__)
 
 
 def hash_password(plain_password: str) -> str:
-    """Hash a plain-text password using bcrypt."""
-    return bcrypt.hashpw(plain_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    """Hash a plain-text password using bcrypt, falling back to sha256 if unavailable."""
+    if bcrypt is not None:
+        return bcrypt.hashpw(plain_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    salt = "shoppy_ai_secure_salt_"
+    return "sha256$" + hashlib.sha256((salt + plain_password).encode("utf-8")).hexdigest()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain-text password against a bcrypt hash.
-
-    Also handles legacy plain-text passwords for backward compatibility.
-    """
-    try:
-        return bcrypt.checkpw(
-            plain_password.encode("utf-8"),
-            hashed_password.encode("utf-8"),
-        )
-    except (ValueError, TypeError):
-        # Legacy plain-text password -- compare directly
-        return plain_password == hashed_password
+    """Verify a plain-text password against bcrypt, sha256, or legacy plain text."""
+    if bcrypt is not None and (hashed_password.startswith("$2a$") or hashed_password.startswith("$2b$")):
+        try:
+            return bcrypt.checkpw(
+                plain_password.encode("utf-8"),
+                hashed_password.encode("utf-8"),
+            )
+        except (ValueError, TypeError):
+            pass
+    if hashed_password.startswith("sha256$"):
+        salt = "shoppy_ai_secure_salt_"
+        expected = "sha256$" + hashlib.sha256((salt + plain_password).encode("utf-8")).hexdigest()
+        return hashed_password == expected
+    return plain_password == hashed_password
 
 # Base de datos SQLite con SQLAlchemy
 from sqlalchemy import create_engine, Column, String, Boolean
@@ -96,7 +105,13 @@ EBAY_CLIENT_SECRET = (os.environ.get("EBAY_CLIENT_SECRET") or "").strip()
 EBAY_MARKETPLACE_ID = os.environ.get("EBAY_MARKETPLACE_ID", "EBAY_US")
 EBAY_OAUTH_URL = "https://api.ebay.com/identity/v1/oauth2/token"
 EBAY_SEARCH_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
-SERPAPI_KEY = (os.environ.get("SERPAPI_KEY") or "").strip()
+SERPAPI_KEY = (
+    os.environ.get("SERPAPI_KEY")
+    or os.environ.get("SERAPI_KEY")
+    or os.environ.get("SERP_API_KEY")
+    or os.environ.get("SERPAPI_API_KEY")
+    or ""
+).strip()
 SERPAPI_SEARCH_URL = "https://serpapi.com/search.json"
 MONGO_URI = (os.environ.get("MONGO_URI") or "").strip()
 mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000) if MONGO_URI else None
@@ -296,36 +311,65 @@ def ebay_items_to_deals(items: list[dict]) -> list[DealOption]:
     return deals
 
 def parse_shopping_price(item: dict) -> Optional[float]:
-    extracted_price = item.get("extracted_price")
+    extracted = item.get("extracted_price")
     try:
-        if extracted_price is not None:
-            price = float(extracted_price)
-        else:
-            price_text = item.get("price")
-            if not isinstance(price_text, str):
-                return None
-            numeric_text = re.sub(r"[^\d.,]", "", price_text)
-            if not numeric_text:
-                return None
-            if "," in numeric_text and "." not in numeric_text:
-                decimal_part = numeric_text.rsplit(",", 1)[-1]
-                numeric_text = numeric_text.replace(",", ".") if len(decimal_part) == 2 else numeric_text.replace(",", "")
+        if extracted is not None:
+            val = float(extracted)
+            if val > 0:
+                return val
+    except (TypeError, ValueError):
+        pass
+
+    # Try raw price string
+    raw_price = item.get("price")
+    if not isinstance(raw_price, str):
+        # Check snippet or rich snippet
+        raw_price = (
+            item.get("rich_snippet", {})
+            .get("top", {})
+            .get("detected_extensions", {})
+            .get("price")
+        )
+    if isinstance(raw_price, (int, float)):
+        return float(raw_price) if raw_price > 0 else None
+
+    if not isinstance(raw_price, str) or not raw_price.strip():
+        return None
+
+    try:
+        # Match common currency representations: $19.99, 19,99 €, 1,299.00, etc.
+        cleaned = re.sub(r"[^\d.,]", "", raw_price.strip())
+        if not cleaned:
+            return None
+        if "," in cleaned and "." not in cleaned:
+            parts = cleaned.rsplit(",", 1)
+            cleaned = cleaned.replace(",", ".") if len(parts[-1]) <= 2 else cleaned.replace(",", "")
+        elif "," in cleaned and "." in cleaned:
+            # e.g. 1,299.99 or 1.299,99
+            if cleaned.rfind(".") > cleaned.rfind(","):
+                cleaned = cleaned.replace(",", "")
             else:
-                numeric_text = numeric_text.replace(",", "")
-            price = float(numeric_text)
+                cleaned = cleaned.replace(".", "").replace(",", ".")
+        val = float(cleaned)
+        return val if val > 0 else None
     except (TypeError, ValueError):
         return None
-    return price if price > 0 else None
 
-def search_serpapi_items(query: str, limit: int = 5) -> list[dict]:
+
+def search_serpapi_items(query: str, limit: int = 12) -> list[dict]:
+    """Busca ofertas reales en la web utilizando SerpApi.
+    Combina Google Shopping y búsqueda web de Google para encontrar tiendas de toda la web.
+    """
     if not SERPAPI_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="La búsqueda web no está configurada. Define SERPAPI_KEY en las variables de entorno.",
-        )
+        logger.warning("SERPAPI_KEY no esta configurada; omitiendo busqueda web SerpApi.")
+        return []
 
+    collected_items = []
+    seen_links = set()
+
+    # 1. Intento con Google Shopping
     try:
-        response = requests.get(
+        resp_shop = requests.get(
             SERPAPI_SEARCH_URL,
             params={
                 "engine": "google_shopping",
@@ -334,42 +378,60 @@ def search_serpapi_items(query: str, limit: int = 5) -> list[dict]:
                 "gl": "us",
                 "api_key": SERPAPI_KEY,
             },
-            timeout=20,
+            timeout=15,
         )
-    except requests.RequestException as error:
-        logger.warning("Could not reach SerpApi (%s)", type(error).__name__)
-        raise HTTPException(
-            status_code=503,
-            detail="No se pudo conectar con el buscador web. Intenta nuevamente.",
-        ) from None
+        if resp_shop.status_code == 200:
+            data = resp_shop.json()
+            shop_results = data.get("shopping_results") or data.get("inline_shopping_results") or []
+            if isinstance(shop_results, list):
+                for it in shop_results:
+                    lnk = it.get("link") or it.get("product_link") or ""
+                    if lnk and lnk not in seen_links:
+                        seen_links.add(lnk)
+                        collected_items.append(it)
+    except Exception as exc:
+        logger.warning("Error en SerpApi Google Shopping: %s", exc)
 
-    if response.status_code != 200:
-        logger.error("SerpApi rejected search with HTTP %s", response.status_code)
-        if response.status_code in (401, 403):
-            detail = "SerpApi rechazó la clave. Verifica que SERPAPI_KEY sea válida y esté activa."
-        elif response.status_code == 429:
-            detail = "Se alcanzó el límite de búsquedas de SerpApi. Intenta más tarde."
-        else:
-            detail = f"La búsqueda web falló (HTTP {response.status_code})."
-        raise HTTPException(status_code=502, detail=detail)
+    # 2. Si hay pocos resultados o para enriquecer con toda la web (Amazon, Walmart, Best Buy, etc.)
+    if len(collected_items) < limit:
+        try:
+            resp_web = requests.get(
+                SERPAPI_SEARCH_URL,
+                params={
+                    "engine": "google",
+                    "q": f"{query} comprar oferta precio",
+                    "hl": "es",
+                    "gl": "us",
+                    "num": limit,
+                    "api_key": SERPAPI_KEY,
+                },
+                timeout=15,
+            )
+            if resp_web.status_code == 200:
+                data = resp_web.json()
+                # Extraer carrusel de shopping de Google Search
+                extra_shopping = data.get("shopping_results") or data.get("inline_shopping_results") or []
+                for it in extra_shopping:
+                    lnk = it.get("link") or it.get("product_link") or ""
+                    if lnk and lnk not in seen_links:
+                        seen_links.add(lnk)
+                        collected_items.append(it)
 
-    try:
-        result = response.json()
-    except ValueError:
-        logger.error("SerpApi returned invalid JSON")
-        raise HTTPException(status_code=502, detail="El buscador devolvió una respuesta inválida.") from None
-    if not isinstance(result, dict):
-        logger.error("SerpApi returned an unexpected response structure")
-        raise HTTPException(status_code=502, detail="El buscador devolvió una respuesta inválida.")
-    if result.get("error"):
-        logger.error("SerpApi reported a search error")
-        raise HTTPException(status_code=502, detail="SerpApi no pudo completar la búsqueda.")
+                # Extraer resultados organicos de tiendas
+                for it in data.get("organic_results", []):
+                    lnk = it.get("link") or ""
+                    # Verificar si tiene precio detectado o proviene de tiendas reconocidas
+                    price = parse_shopping_price(it)
+                    if lnk and lnk not in seen_links and price is not None:
+                        seen_links.add(lnk)
+                        it_copy = dict(it)
+                        it_copy["extracted_price"] = price
+                        collected_items.append(it_copy)
+        except Exception as exc:
+            logger.warning("Error en SerpApi Google Web: %s", exc)
 
-    shopping_results = result.get("shopping_results", [])
-    if not isinstance(shopping_results, list):
-        logger.error("SerpApi returned invalid shopping_results")
-        raise HTTPException(status_code=502, detail="El buscador devolvió resultados inválidos.")
-    return shopping_results[:limit]
+    return collected_items[:limit]
+
 
 def serpapi_items_to_deals(items: list[dict]) -> list[DealOption]:
     deals = []
@@ -377,21 +439,59 @@ def serpapi_items_to_deals(items: list[dict]) -> list[DealOption]:
         if not isinstance(item, dict):
             continue
         price = parse_shopping_price(item)
-        source = item.get("source")
-        title = item.get("title")
-        link = item.get("link")
-        if price is None or not isinstance(source, str) or not source.strip() or not isinstance(title, str) or not isinstance(link, str):
+        if price is None:
             continue
+
+        # Extraer nombre de tienda de multiples esquemas posibles
+        source = (
+            item.get("source")
+            or (item.get("merchant") or {}).get("name")
+            or item.get("seller")
+            or item.get("store")
+            or ""
+        )
+        if not isinstance(source, str) or not source.strip():
+            # Si no hay tienda explicita, inferir del dominio o asignar 'Tienda Web'
+            lnk = item.get("link") or item.get("product_link") or ""
+            if "amazon" in lnk.lower():
+                source = "Amazon"
+            elif "walmart" in lnk.lower():
+                source = "Walmart"
+            elif "bestbuy" in lnk.lower():
+                source = "Best Buy"
+            elif "aliexpress" in lnk.lower():
+                source = "AliExpress"
+            elif "mercadolibre" in lnk.lower():
+                source = "Mercado Libre"
+            elif "target" in lnk.lower():
+                source = "Target"
+            else:
+                source = "Tienda Web"
+
+        title = item.get("title") or item.get("name")
+        if not isinstance(title, str) or not title.strip():
+            continue
+
+        link = item.get("link") or item.get("product_link") or item.get("serpapi_product_api") or ""
+        if not isinstance(link, str) or not link.strip():
+            continue
+
+        thumb = (
+            item.get("thumbnail")
+            or item.get("serpapi_thumbnail")
+            or (item.get("image") or {}).get("imageUrl")
+        )
+
         deals.append(DealOption(
             store=source.strip(),
             price=price,
             is_real_price=True,
-            price_source="Google Shopping vía SerpApi",
-            image_url=item.get("thumbnail") if isinstance(item.get("thumbnail"), str) else None,
+            price_source=f"Web ({source.strip()}) vía SerpApi",
+            image_url=thumb if isinstance(thumb, str) else None,
             shipping_days=None,
-            url=link,
+            url=link.strip(),
             condition="Nuevo",
-            title=title,
+            title=title.strip(),
             import_fee=None,
             price_history=[],
         ))
@@ -467,6 +567,18 @@ async def deliver_verification_code(email: str, code: str) -> None:
     except RuntimeError as error:
         logger.error("Brevo email delivery failed: %s", error)
         raise HTTPException(status_code=503, detail=str(error)) from None
+
+
+@app.get("/api/status")
+async def get_system_status():
+    """Endpoint de diagnóstico para verificar qué APIs están configuradas y activas."""
+    return {
+        "gemini_configurado": bool(GEMINI_API_KEY),
+        "ebay_configurado": bool(EBAY_CLIENT_ID and EBAY_CLIENT_SECRET),
+        "serpapi_configurado": bool(SERPAPI_KEY),
+        "mongo_configurado": bool(searches_collection is not None),
+        "brevo_configurado": bool(BREVO_API_KEY),
+    }
 
 @app.get("/")
 async def serve_frontend():
@@ -835,14 +947,28 @@ async def search_deals(query: str, store_filter: str = "Todas"):
     normalized_store_filter = store_filter.strip().lower()
     all_deals = []
 
+    # 1. Búsqueda en toda la web a través de SerpApi (Google Shopping + Web)
     if SERPAPI_KEY:
-        shopping_items = await asyncio.to_thread(search_serpapi_items, opt_query, 10)
-        all_deals.extend(serpapi_items_to_deals(shopping_items))
+        try:
+            shopping_items = await asyncio.to_thread(search_serpapi_items, opt_query, 12)
+            serp_deals = serpapi_items_to_deals(shopping_items)
+            all_deals.extend(serp_deals)
+            logger.info("SerpApi devolvió %d ofertas para '%s'", len(serp_deals), opt_query)
+        except Exception as exc:
+            logger.error("Fallo la búsqueda en SerpApi: %s", exc)
+    else:
+        logger.warning("SERPAPI_KEY no detectada en variables de entorno")
 
+    # 2. Búsqueda en eBay (hasta 6 resultados)
     include_ebay = normalized_store_filter in ("todas", "ebay")
     if include_ebay and (EBAY_CLIENT_ID and EBAY_CLIENT_SECRET or normalized_store_filter == "ebay"):
-        ebay_items = await asyncio.to_thread(search_ebay_items, opt_query, 3)
-        all_deals.extend(ebay_items_to_deals(ebay_items))
+        try:
+            ebay_items = await asyncio.to_thread(search_ebay_items, opt_query, 6)
+            ebay_deals = ebay_items_to_deals(ebay_items)
+            all_deals.extend(ebay_deals)
+            logger.info("eBay devolvió %d ofertas para '%s'", len(ebay_deals), opt_query)
+        except Exception as exc:
+            logger.error("Fallo la búsqueda en eBay: %s", exc)
 
     if not SERPAPI_KEY and not (EBAY_CLIENT_ID and EBAY_CLIENT_SECRET) and normalized_store_filter in ("todas", "amazon", "walmart"):
         encoded_q = urllib.parse.quote(opt_query)

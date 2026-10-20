@@ -16,10 +16,31 @@ from pydantic import BaseModel, Field
 from typing import Any, List, Optional
 from google import genai
 import os
+import bcrypt
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
 logger = logging.getLogger(__name__)
+
+
+def hash_password(plain_password: str) -> str:
+    """Hash a plain-text password using bcrypt."""
+    return bcrypt.hashpw(plain_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plain-text password against a bcrypt hash.
+
+    Also handles legacy plain-text passwords for backward compatibility.
+    """
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    except (ValueError, TypeError):
+        # Legacy plain-text password -- compare directly
+        return plain_password == hashed_password
 
 # Base de datos SQLite con SQLAlchemy
 from sqlalchemy import create_engine, Column, String, Boolean
@@ -473,7 +494,7 @@ async def register_user(
             db.add(DBUser(
                 email=email,
                 name=user.name,
-                password=user.password,
+                password=hash_password(user.password),
                 verified=False,
                 verification_token=None,
             ))
@@ -586,7 +607,7 @@ async def login_user(user: UserAuth):
     if not stored:
         raise HTTPException(status_code=400, detail="Usuario no encontrado. Regístrate primero.")
     
-    if stored.password != user.password:
+    if not verify_password(user.password, stored.password):
         raise HTTPException(status_code=400, detail="Contraseña incorrecta.")
     
     if not stored.verified:
